@@ -1,0 +1,288 @@
+import { useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { Loader2, Sparkles } from "lucide-react"
+import { toast } from "sonner"
+import { z } from "zod"
+
+import { PageHeader } from "@/components/app/page-header"
+import { Button, buttonVariants } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
+import { categories } from "@/lib/demo-data"
+import { simulateRequest } from "@/lib/pending-backend"
+import { cn } from "@/lib/utils"
+import { paths } from "@/routes/paths"
+
+/** valor positivo, data válida, tipo e categoria
+ *  obrigatórios e categoria compatível com o tipo do lançamento. */
+const schema = z
+  .object({
+    type: z.enum(["receita", "despesa"]),
+    amount: z
+      .number({ error: "Informe o valor." })
+      .positive("O valor deve ser maior que zero."),
+    categoryId: z.string().min(1, "Selecione uma categoria."),
+    date: z.string().min(1, "Informe a data."),
+    description: z
+      .string()
+      .trim()
+      .min(3, "Descreva o lançamento com pelo menos 3 caracteres.")
+      .max(140, "A descrição deve ter no máximo 140 caracteres."),
+  })
+  .refine(
+    (data) =>
+      categories.find((c) => c.id === data.categoryId)?.type === data.type,
+    {
+      message: "A categoria precisa ser compatível com o tipo do lançamento.",
+      path: ["categoryId"],
+    }
+  )
+
+type Values = z.infer<typeof schema>
+
+const today = new Date().toISOString().slice(0, 10)
+
+export function NewTransactionPage() {
+  const navigate = useNavigate()
+  const [type, setType] = useState<"receita" | "despesa">("despesa")
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      type: "despesa",
+      categoryId: "",
+      date: today,
+      description: "",
+    },
+  })
+
+  const available = categories.filter((item) => item.type === type)
+
+  function changeType(next: string) {
+    const value = next === "receita" ? "receita" : "despesa"
+    setType(value)
+    setValue("type", value)
+    // A categoria escolhida pode não existir no outro tipo, então é limpa.
+    setValue("categoryId", "")
+  }
+
+  async function onSubmit(values: Values) {
+    await simulateRequest()
+    toast.success("Lançamento salvo", {
+      description: `${values.description} — a persistência real entra com o backend.`,
+    })
+    navigate(paths.app.transactions)
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Novo lançamento"
+        description="Registre uma receita ou despesa pelo formulário."
+      />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2 [--card-spacing:--spacing(6)]">
+          <CardHeader>
+            <CardTitle>Dados do lançamento</CardTitle>
+            <CardDescription>
+              Todos os campos são obrigatórios.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} noValidate>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="tipo">Tipo</FieldLabel>
+                  <Tabs value={type} onValueChange={changeType}>
+                    <TabsList id="tipo">
+                      <TabsTrigger value="despesa">Despesa</TabsTrigger>
+                      <TabsTrigger value="receita">Receita</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </Field>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field data-invalid={Boolean(errors.amount)}>
+                    <FieldLabel htmlFor="valor">Valor</FieldLabel>
+                    <Input
+                      id="valor"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      className="h-10"
+                      aria-invalid={Boolean(errors.amount)}
+                      aria-describedby={
+                        errors.amount ? "valor-error" : undefined
+                      }
+                      {...register("amount", { valueAsNumber: true })}
+                    />
+                    <FieldError id="valor-error" errors={[errors.amount]} />
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.date)}>
+                    <FieldLabel htmlFor="data">Data</FieldLabel>
+                    <Input
+                      id="data"
+                      type="date"
+                      className="h-10"
+                      aria-invalid={Boolean(errors.date)}
+                      aria-describedby={errors.date ? "data-error" : undefined}
+                      {...register("date")}
+                    />
+                    <FieldError id="data-error" errors={[errors.date]} />
+                  </Field>
+                </div>
+
+                <Field data-invalid={Boolean(errors.categoryId)}>
+                  <FieldLabel htmlFor="categoria">Categoria</FieldLabel>
+                  <Controller
+                    control={control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || null}
+                        onValueChange={(value) => field.onChange(value ?? "")}
+                      >
+                        <SelectTrigger
+                          id="categoria"
+                          className="h-10"
+                          aria-invalid={Boolean(errors.categoryId)}
+                          aria-describedby={
+                            errors.categoryId ? "categoria-error" : undefined
+                          }
+                        >
+                          <SelectValue placeholder="Selecione uma categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {available.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldError
+                    id="categoria-error"
+                    errors={[errors.categoryId]}
+                  />
+                </Field>
+
+                <Field data-invalid={Boolean(errors.description)}>
+                  <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
+                  <Textarea
+                    id="descricao"
+                    rows={3}
+                    placeholder="Ex.: Almoço no restaurante do campus"
+                    aria-invalid={Boolean(errors.description)}
+                    aria-describedby={
+                      errors.description ? "descricao-error" : "descricao-hint"
+                    }
+                    {...register("description")}
+                  />
+                  {errors.description ? (
+                    <FieldError
+                      id="descricao-error"
+                      errors={[errors.description]}
+                    />
+                  ) : (
+                    <FieldDescription id="descricao-hint">
+                      Ajuda a identificar o lançamento nas listagens.
+                    </FieldDescription>
+                  )}
+                </Field>
+
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Link
+                    to={paths.app.transactions}
+                    className={cn(
+                      buttonVariants({ variant: "ghost" }),
+                      "h-10 sm:w-32"
+                    )}
+                  >
+                    Cancelar
+                  </Link>
+                  <Button
+                    type="submit"
+                    className="h-10 sm:w-32"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar"
+                    )}
+                  </Button>
+                </div>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="ring-ai/25 h-fit">
+          <CardHeader>
+            <CardTitle className="text-ai-accent flex items-center gap-2">
+              <Sparkles className="size-4" />
+              A mesma tarefa por conversa
+            </CardTitle>
+            <CardDescription>
+              Este é o formulário convencional. A mesma receita ou despesa pode
+              ser registrada escrevendo uma frase para o assistente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="rounded-lg rounded-bl-sm bg-muted/60 px-3 py-2 text-sm">
+              “Gastei R$ 35 com almoço hoje”
+            </p>
+            <Link
+              to={paths.app.assistant}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "h-9 w-full"
+              )}
+            >
+              Abrir assistente
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

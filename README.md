@@ -15,19 +15,36 @@ Frontend do TCC "Desenvolvimento de um sistema web de gestão financeira com sup
 tcc-frontend/
 ├── public/            # assets estáticos servidos diretamente (favicon, ícones svg)
 ├── src/
-│   ├── assets/         # imagens e outros assets importados pelo código
 │   ├── components/
+│   │   ├── app/         # componentes das telas privadas (sidebar, cards, gráficos)
+│   │   ├── auth/        # componentes das telas de autenticação
+│   │   ├── brand/       # logo e elementos de marca
 │   │   └── ui/          # componentes gerados/gerenciados pelo Shadcn/UI CLI
-│   ├── lib/             # utilitários compartilhados (ex.: lib/utils.ts -> cn())
+│   ├── hooks/           # hooks compartilhados (ex.: use-session)
+│   ├── layouts/         # shells de página (auth-layout e app-layout)
+│   ├── lib/             # tipos, formatação, cálculos e dados de demonstração
+│   ├── pages/           # uma pasta/arquivo por tela
+│   │   ├── app/          # dashboard, lançamentos, relatórios, assistente, perfil
+│   │   └── auth/         # login, cadastro e schemas de validação
+│   ├── routes/          # definição de rotas, paths e guard das rotas privadas
 │   ├── App.tsx
 │   ├── main.tsx
-│   └── index.css        # entrypoint do Tailwind + tokens de tema (light/dark)
+│   └── index.css        # entrypoint do Tailwind + design tokens do tema
 ├── components.json     # config do Shadcn/UI CLI
 ├── vite.config.ts
 └── tsconfig*.json
 ```
 
-O alias `@/*` aponta para `src/*` (configurado em `tsconfig.app.json` e usado pelo Shadcn/UI para gerar imports como `@/lib/utils` e `@/components/ui/...`).
+O alias `@/*` aponta para `src/*`. Ele precisa estar declarado em **dois** lugares: em
+`tsconfig.app.json` (para o type-check e o editor) e em `vite.config.ts` (para o bundler
+resolver os imports em tempo de execução).
+
+## Rotas
+
+Rotas públicas e privadas são declaradas em blocos separados em `src/routes/app-router.tsx`;
+os caminhos ficam centralizados em `src/routes/paths.ts`. Tudo que estiver sob
+`ProtectedRoute` exige sessão ativa e, sem ela, redireciona para o login guardando a rota
+pretendida.
 
 ## Comandos
 
