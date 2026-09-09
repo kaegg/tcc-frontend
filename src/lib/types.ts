@@ -1,17 +1,18 @@
 /**
  * Contratos do domínio financeiro usados pelo frontend.
  *
- * Estes tipos serão substituídos pelos contratos reais da API na integração
- * com o backend. Por enquanto descrevem o formato que as telas consomem.
+ * Os tipos que já vêm da API são reexportados de `@/lib/api/schemas`, onde os
+ * schemas Zod são a fonte única e também validam a resposta em tempo de
+ * execução. Manter uma cópia aqui criaria dois `Category` que divergem em
+ * silêncio.
+ *
+ * O que sobra descreve o formato que as telas ainda mockadas consomem, e sai
+ * daqui conforme cada uma passa a consumir a API.
  */
 
-export type TransactionType = "receita" | "despesa"
+import type { TransactionType } from "@/lib/api/schemas"
 
-export type Category = {
-  id: string
-  name: string
-  type: TransactionType
-}
+export type { Category, TransactionType } from "@/lib/api/schemas"
 
 export type Transaction = {
   id: string

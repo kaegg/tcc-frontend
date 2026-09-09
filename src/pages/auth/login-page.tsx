@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { clearSessionExpired } from "@/lib/api/session-store"
 import { simulateRequest } from "@/lib/pending-backend"
 import { loginSchema, type LoginValues } from "@/pages/auth/auth-schemas"
 import { paths } from "@/routes/paths"
@@ -42,6 +43,11 @@ export function LoginPage() {
   // deixando o protótipo navegável. A autenticação real entra na implementação do backend.
   async function onSubmit() {
     await simulateRequest()
+
+    // Limpar o sinal de expiração é obrigatório antes de voltar: sem isto, a
+    // rota protegida encontraria a sessão ainda marcada como expirada e
+    // mandaria o usuário de volta ao login, em laço.
+    clearSessionExpired()
     navigate(from, { replace: true })
   }
 
