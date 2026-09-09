@@ -43,6 +43,17 @@ export function parseDate(iso: string) {
   return new Date(year, month - 1, day)
 }
 
+/** Data civil de hoje, no fuso de quem está usando, em "AAAA-MM-DD".
+ *  `new Date().toISOString()` devolveria a data em UTC: a partir das 21h no
+ *  horário de Brasília isso já é o dia seguinte, e um formulário aberto à
+ *  noite viria com a data de amanhã preenchida. */
+export function todayIso() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, "0")
+  const day = String(now.getDate()).padStart(2, "0")
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 export function formatDate(iso: string) {
   return dateFormat.format(parseDate(iso))
 }

@@ -1,12 +1,13 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Sparkles } from "lucide-react"
+import { CircleAlert, Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { PageHeader } from "@/components/app/page-header"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -32,43 +33,79 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { categories } from "@/lib/demo-data"
+import { useCategories } from "@/hooks/use-categories"
+import { describeApiError } from "@/lib/api/errors"
+import { todayIso } from "@/lib/format"
+import type { Category } from "@/lib/api/schemas"
 import { simulateRequest } from "@/lib/pending-backend"
 import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
-/** valor positivo, data válida, tipo e categoria
- *  obrigatórios e categoria compatível com o tipo do lançamento. */
-const schema = z
-  .object({
-    type: z.enum(["receita", "despesa"]),
-    amount: z
-      .number({ error: "Informe o valor." })
-      .positive("O valor deve ser maior que zero."),
-    categoryId: z.string().min(1, "Selecione uma categoria."),
-    date: z.string().min(1, "Informe a data."),
-    description: z
-      .string()
-      .trim()
-      .min(3, "Descreva o lançamento com pelo menos 3 caracteres.")
-      .max(140, "A descrição deve ter no máximo 140 caracteres."),
-  })
-  .refine(
-    (data) =>
-      categories.find((c) => c.id === data.categoryId)?.type === data.type,
-    {
-      message: "A categoria precisa ser compatível com o tipo do lançamento.",
-      path: ["categoryId"],
-    }
-  )
+/**
+ * valor positivo, data válida, tipo e categoria obrigatórios e categoria
+ * compatível com o tipo do lançamento.
+ *
+ * É uma fábrica, e não um schema no escopo do módulo, porque a última regra
+ * depende da lista de categorias — que agora chega da API. Um schema montado
+ * na carga do módulo capturaria uma lista vazia e reprovaria toda categoria
+ * escolhida.
+ *
+ * A regra continua no cliente mesmo com o banco garantindo o mesmo por chave
+ * estrangeira composta: as duas interfaces do estudo precisam validar igual,
+ * senão a comparação entre elas não se sustenta.
+ */
+function createTransactionSchema(categories: Category[]) {
+  return z
+    .object({
+      type: z.enum(["receita", "despesa"]),
+      amount: z
+        .number({ error: "Informe o valor." })
+        .positive("O valor deve ser maior que zero."),
+      categoryId: z.string().min(1, "Selecione uma categoria."),
+      date: z.string().min(1, "Informe a data."),
+      description: z
+        .string()
+        .trim()
+        .min(3, "Descreva o lançamento com pelo menos 3 caracteres.")
+        .max(140, "A descrição deve ter no máximo 140 caracteres."),
+    })
+    .refine(
+      (data) =>
+        categories.find((c) => c.id === data.categoryId)?.type === data.type,
+      {
+        message: "A categoria precisa ser compatível com o tipo do lançamento.",
+        path: ["categoryId"],
+      }
+    )
+}
 
-type Values = z.infer<typeof schema>
-
-const today = new Date().toISOString().slice(0, 10)
+type Values = z.infer<ReturnType<typeof createTransactionSchema>>
 
 export function NewTransactionPage() {
   const navigate = useNavigate()
   const [type, setType] = useState<"receita" | "despesa">("despesa")
+
+  const {
+    data: categories,
+    isPending: loadingCategories,
+    isError: categoriesFailed,
+    error: categoriesError,
+    refetch: reloadCategories,
+    isFetching: refetchingCategories,
+  } = useCategories()
+
+  // Calculado no render, e não na carga do módulo: numa sessão aberta durante
+  // a virada do dia, a data padrão ficaria presa no dia anterior. E vem do
+  // fuso local, não de UTC, senão à noite o formulário abre com a data de
+  // amanhã já preenchida.
+  const today = useMemo(() => todayIso(), [])
+
+  // O RHF relê `_options` a cada render, então trocar o resolver quando as
+  // categorias chegam funciona sem recriar o formulário.
+  const schema = useMemo(
+    () => createTransactionSchema(categories ?? []),
+    [categories]
+  )
 
   const {
     register,
@@ -86,7 +123,10 @@ export function NewTransactionPage() {
     },
   })
 
-  const available = categories.filter((item) => item.type === type)
+  const available = useMemo(
+    () => (categories ?? []).filter((item) => item.type === type),
+    [categories, type]
+  )
 
   function changeType(next: string) {
     const value = next === "receita" ? "receita" : "despesa"
@@ -121,6 +161,31 @@ export function NewTransactionPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} noValidate>
+              {/* Falha de comunicação vale para o formulário inteiro e vai
+                  num Alert no topo, nunca num FieldError: não é erro do campo
+                  que o usuário preencheu. */}
+              {categoriesFailed ? (
+                <Alert variant="destructive" className="mb-6">
+                  <CircleAlert />
+                  <AlertTitle>Não foi possível carregar as categorias</AlertTitle>
+                  <AlertDescription className="space-y-3">
+                    <p>{describeApiError(categoriesError)}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => void reloadCategories()}
+                      disabled={refetchingCategories}
+                    >
+                      <RefreshCw />
+                      {refetchingCategories
+                        ? "Carregando..."
+                        : "Tentar novamente"}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="tipo">Tipo</FieldLabel>
@@ -179,12 +244,25 @@ export function NewTransactionPage() {
                         <SelectTrigger
                           id="categoria"
                           className="h-10"
+                          // Sem a lista não há escolha válida a oferecer:
+                          // deixar o campo aberto convidaria o usuário a
+                          // preencher o formulário para ser barrado no fim.
+                          disabled={loadingCategories || categoriesFailed}
+                          aria-busy={loadingCategories}
                           aria-invalid={Boolean(errors.categoryId)}
                           aria-describedby={
                             errors.categoryId ? "categoria-error" : undefined
                           }
                         >
-                          <SelectValue placeholder="Selecione uma categoria" />
+                          <SelectValue
+                            placeholder={
+                              loadingCategories
+                                ? "Carregando categorias..."
+                                : categoriesFailed
+                                  ? "Categorias indisponíveis"
+                                  : "Selecione uma categoria"
+                            }
+                          />
                         </SelectTrigger>
                         <SelectContent>
                           {available.map((item) => (
@@ -239,7 +317,9 @@ export function NewTransactionPage() {
                   <Button
                     type="submit"
                     className="h-10 sm:w-32"
-                    disabled={isSubmitting}
+                    disabled={
+                      isSubmitting || loadingCategories || categoriesFailed
+                    }
                   >
                     {isSubmitting ? (
                       <>

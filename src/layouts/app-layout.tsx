@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router-dom"
 import { LogOut, Settings, User } from "lucide-react"
 
+import { ApiStatusBanner } from "@/components/app/api-status-banner"
 import { AppSidebar } from "@/components/app/app-sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -83,6 +84,7 @@ export function AppLayout() {
         </header>
 
         <main className="flex-1 p-4 md:p-6">
+          <ApiStatusBanner />
           <Outlet />
         </main>
       </SidebarInset>
