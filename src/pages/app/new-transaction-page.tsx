@@ -75,7 +75,7 @@ function createTransactionSchema(categories: Category[]) {
       {
         message: "A categoria precisa ser compatível com o tipo do lançamento.",
         path: ["categoryId"],
-      }
+      },
     )
 }
 
@@ -104,7 +104,7 @@ export function NewTransactionPage() {
   // categorias chegam funciona sem recriar o formulário.
   const schema = useMemo(
     () => createTransactionSchema(categories ?? []),
-    [categories]
+    [categories],
   )
 
   const {
@@ -125,7 +125,7 @@ export function NewTransactionPage() {
 
   const available = useMemo(
     () => (categories ?? []).filter((item) => item.type === type),
-    [categories, type]
+    [categories, type],
   )
 
   function changeType(next: string) {
@@ -155,9 +155,7 @@ export function NewTransactionPage() {
         <Card className="lg:col-span-2 [--card-spacing:--spacing(6)]">
           <CardHeader>
             <CardTitle>Dados do lançamento</CardTitle>
-            <CardDescription>
-              Todos os campos são obrigatórios.
-            </CardDescription>
+            <CardDescription>Todos os campos são obrigatórios.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -167,7 +165,9 @@ export function NewTransactionPage() {
               {categoriesFailed ? (
                 <Alert variant="destructive" className="mb-6">
                   <CircleAlert />
-                  <AlertTitle>Não foi possível carregar as categorias</AlertTitle>
+                  <AlertTitle>
+                    Não foi possível carregar as categorias
+                  </AlertTitle>
                   <AlertDescription className="space-y-3">
                     <p>{describeApiError(categoriesError)}</p>
                     <Button
@@ -309,7 +309,7 @@ export function NewTransactionPage() {
                     to={paths.app.transactions}
                     className={cn(
                       buttonVariants({ variant: "ghost" }),
-                      "h-10 sm:w-32"
+                      "h-10 sm:w-32",
                     )}
                   >
                     Cancelar
@@ -339,8 +339,7 @@ export function NewTransactionPage() {
         <Card className="ring-ai/25 h-fit">
           <CardHeader>
             <CardTitle className="text-ai-accent flex items-center gap-2">
-              <Sparkles className="size-4" />
-              A mesma tarefa por conversa
+              <Sparkles className="size-4" />A mesma tarefa por conversa
             </CardTitle>
             <CardDescription>
               Este é o formulário convencional. A mesma receita ou despesa pode
@@ -355,7 +354,7 @@ export function NewTransactionPage() {
               to={paths.app.assistant}
               className={cn(
                 buttonVariants({ variant: "outline" }),
-                "h-9 w-full"
+                "h-9 w-full",
               )}
             >
               Abrir assistente

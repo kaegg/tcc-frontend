@@ -16,20 +16,20 @@ function readApiBaseUrl(): string {
     if (import.meta.env.DEV) {
       console.warn(
         `[env] VITE_API_URL não definida; usando ${FALLBACK_API_URL}. ` +
-          "Copie .env.example para .env para configurar."
+          "Copie .env.example para .env para configurar.",
       )
       return FALLBACK_API_URL
     }
 
     throw new Error(
-      "VITE_API_URL não foi definida no build. Copie .env.example para .env e recompile."
+      "VITE_API_URL não foi definida no build. Copie .env.example para .env e recompile.",
     )
   }
 
   if (!isAbsoluteUrl(raw) && !raw.startsWith("/")) {
     throw new Error(
       `VITE_API_URL inválida: "${raw}". Use uma URL absoluta (http://host:porta/api) ` +
-        "ou um caminho começando com barra (/api)."
+        "ou um caminho começando com barra (/api).",
     )
   }
 

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { CircleAlert, MessageSquarePlus, RefreshCw, Send, Sparkles } from "lucide-react"
+import {
+  CircleAlert,
+  MessageSquarePlus,
+  RefreshCw,
+  Send,
+  Sparkles,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { ProposalCard } from "@/components/app/proposal-card"
@@ -41,7 +47,7 @@ export function AssistantPage() {
 
   function updateActive(update: (conversation: Conversation) => Conversation) {
     setConversations((items) =>
-      items.map((item) => (item.id === active.id ? update(item) : item))
+      items.map((item) => (item.id === active.id ? update(item) : item)),
     )
   }
 
@@ -110,14 +116,14 @@ export function AssistantPage() {
 
   function resolveProposal(
     messageId: string,
-    status: "confirmada" | "cancelada"
+    status: "confirmada" | "cancelada",
   ) {
     updateActive((conversation) => ({
       ...conversation,
       messages: conversation.messages.map((message) =>
         message.id === messageId
           ? { ...message, proposalStatus: status }
-          : message
+          : message,
       ),
     }))
 
@@ -168,7 +174,7 @@ export function AssistantPage() {
                       "w-full rounded-lg px-2 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                       conversation.id === active.id
                         ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                     )}
                   >
                     <span className="block truncate">{conversation.title}</span>

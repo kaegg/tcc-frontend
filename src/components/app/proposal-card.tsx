@@ -10,7 +10,7 @@ import type { ChatMessage } from "@/lib/types"
 /**
  * Cartão de confirmação de uma proposta interpretada pelo assistente.
  *
- * o modelo interpreta e sugere, mas nada é gravado sem uma confirmação explícita. 
+ * o modelo interpreta e sugere, mas nada é gravado sem uma confirmação explícita.
  * O estado da proposta é sempre dito em texto, nunca apenas por cor.
  */
 export function ProposalCard({
@@ -79,7 +79,11 @@ export function ProposalCard({
   )
 }
 
-function StatusBadge({ status }: { status: "pendente" | "confirmada" | "cancelada" }) {
+function StatusBadge({
+  status,
+}: {
+  status: "pendente" | "confirmada" | "cancelada"
+}) {
   if (status === "confirmada") {
     return (
       <Badge

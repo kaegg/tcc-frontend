@@ -8,7 +8,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { CircleAlert, Download, PiggyBank, RefreshCw, TrendingDown, TrendingUp, Wallet } from "lucide-react"
+import {
+  CircleAlert,
+  Download,
+  PiggyBank,
+  RefreshCw,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { CategoryBreakdown } from "@/components/app/category-breakdown"
@@ -49,9 +57,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { monthlySeries, transactions } from "@/lib/demo-data"
-import { formatCurrency, formatCurrencyCompact, formatPercent } from "@/lib/format"
+import {
+  formatCurrency,
+  formatCurrencyCompact,
+  formatPercent,
+} from "@/lib/format"
 import { sumTotals, totalsByCategory } from "@/lib/finance"
-import { BACKEND_UNAVAILABLE_MESSAGE, simulateRequest } from "@/lib/pending-backend"
+import {
+  BACKEND_UNAVAILABLE_MESSAGE,
+  simulateRequest,
+} from "@/lib/pending-backend"
 
 const flowConfig = {
   receitas: { label: "Receitas", color: "var(--chart-1)" },
