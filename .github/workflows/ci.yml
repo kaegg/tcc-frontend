@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificacoes:
+    # Push cobre todo commit de toda branch. O gatilho de pull_request fica so
+    # para PR vindo de fork, onde o evento de push nao chega a este repositorio.
+    # Sem esta condicao, todo commit de branch com PR aberto rodaria duas vezes.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    name: Lint, testes e build
+    runs-on: ubuntu-latest
+
+    env:
+      # O build interrompe de proposito quando esta variavel falta, para que um
+      # deploy nao suba com a URL da API indefinida. Aqui o valor so precisa ser
+      # valido: nada e publicado, e nenhuma requisicao sai.
+      VITE_API_URL: http://localhost:3000/api
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Cobre lint e formatacao: o Prettier roda como regra do ESLint.
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run build

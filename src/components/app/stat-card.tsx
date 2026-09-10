@@ -34,7 +34,7 @@ export function StatCard({
           className={cn(
             "financial-figure text-2xl font-semibold",
             tone === "positive" && "text-success",
-            tone === "negative" && "text-destructive"
+            tone === "negative" && "text-destructive",
           )}
         >
           {value}

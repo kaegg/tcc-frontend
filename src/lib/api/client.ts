@@ -92,7 +92,10 @@ function buildHeaders(hasBody: boolean): Headers {
 
 /** Lê o corpo sem quebrar em resposta vazia ou em resposta que não é JSON. */
 async function readJson(response: Response): Promise<unknown> {
-  if (response.status === 204 || response.headers.get("Content-Length") === "0") {
+  if (
+    response.status === 204 ||
+    response.headers.get("Content-Length") === "0"
+  ) {
     return null
   }
 
@@ -109,7 +112,7 @@ async function readJson(response: Response): Promise<unknown> {
 function toApiError(
   response: Response,
   payload: unknown,
-  path: string
+  path: string,
 ): ApiError {
   const parsed = apiErrorBodySchema.safeParse(payload)
 
@@ -149,7 +152,7 @@ function canRefresh(): boolean {
 /** Requisição à API, com contrato validado na resposta. */
 export async function apiRequest<T>(
   path: string,
-  options: RequestOptions<T>
+  options: RequestOptions<T>,
 ): Promise<T> {
   const {
     schema,
@@ -229,7 +232,7 @@ export async function apiRequest<T>(
 function toTransportError(
   error: unknown,
   path: string,
-  timeoutSignal: AbortSignal
+  timeoutSignal: AbortSignal,
 ): unknown {
   const isAbort = error instanceof DOMException && error.name === "AbortError"
 
@@ -252,7 +255,7 @@ function toTransportError(
 export function apiGet<T>(
   path: string,
   schema: z.ZodType<T>,
-  options?: Omit<RequestOptions<T>, "schema" | "method" | "body">
+  options?: Omit<RequestOptions<T>, "schema" | "method" | "body">,
 ): Promise<T> {
   return apiRequest(path, { ...options, schema, method: "GET" })
 }

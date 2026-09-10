@@ -17,7 +17,7 @@ export function TransactionTypeBadge({ type }: { type: TransactionType }) {
         "gap-1",
         isReceita
           ? "border-success/30 bg-success/10 text-success"
-          : "border-chart-2/30 bg-chart-2/10 text-chart-2"
+          : "border-chart-2/30 bg-chart-2/10 text-chart-2",
       )}
     >
       {isReceita ? (

@@ -8,6 +8,7 @@ Frontend do TCC "Desenvolvimento de um sistema web de gestão financeira com sup
 - **Tailwind CSS v4** (via `@tailwindcss/vite`) + **Shadcn/UI** (`base-nova` style, ícones via `lucide-react`).
 - **React Router** para navegação, **TanStack Query** e **React Hook Form + Zod** para dados e formulários.
 - **Socket.IO client** para a comunicação em tempo real com o chatbot (backend NestJS).
+- **Vitest** + **Testing Library** para os testes; **ESLint** e **Prettier** para lint e formatação.
 
 ## Estrutura de diretórios
 
@@ -30,6 +31,7 @@ tcc-frontend/
 │   │   ├── app/          # dashboard, lançamentos, relatórios, assistente, perfil
 │   │   └── auth/         # login, cadastro e schemas de validação
 │   ├── routes/          # definição de rotas, paths e guard das rotas privadas
+│   ├── test/            # setup do Vitest (os testes ficam ao lado do código)
 │   ├── App.tsx
 │   ├── main.tsx
 │   └── index.css        # entrypoint do Tailwind + design tokens do tema
@@ -55,8 +57,8 @@ pretendida.
 cp .env.example .env
 ```
 
-| Variável | Para que serve |
-|---|---|
+| Variável       | Para que serve                                                                          |
+| -------------- | --------------------------------------------------------------------------------------- |
 | `VITE_API_URL` | URL base da API REST, **já com o prefixo `/api`** (padrão: `http://localhost:3000/api`) |
 
 A URL é embutida no bundle em tempo de **build**, não lida em tempo de execução: cada ambiente
@@ -94,13 +96,13 @@ O cliente fica em `src/lib/api/client.ts` e usa `fetch` nativo, sem dependência
 
 Onde cada erro aparece na interface:
 
-| Origem | Onde |
-|---|---|
-| Rede ou tempo esgotado | `Alert` no topo, com "Tentar novamente" |
+| Origem                          | Onde                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| Rede ou tempo esgotado          | `Alert` no topo, com "Tentar novamente"                                               |
 | Falha ao carregar dado auxiliar | `Alert` no topo e campo desabilitado — nunca `FieldError`, porque não é erro do campo |
-| Validação no cliente (Zod) | `FieldError` com `aria-invalid` e `aria-describedby` |
-| Validação no servidor (400) | `Alert` no topo, listando as mensagens |
-| Sessão expirada (401) | Aviso único e redirecionamento para o login |
+| Validação no cliente (Zod)      | `FieldError` com `aria-invalid` e `aria-describedby`                                  |
+| Validação no servidor (400)     | `Alert` no topo, listando as mensagens                                                |
+| Sessão expirada (401)           | Aviso único e redirecionamento para o login                                           |
 
 `ApiStatusBanner` fica no `AppLayout` e consulta `GET /api/health`. No caminho feliz não renderiza
 nada e não consulta de novo; só volta a verificar, a cada 30 segundos, enquanto houver problema.
@@ -109,14 +111,6 @@ nada e não consulta de novo; só volta a verificar, a cada 30 segundos, enquant
 
 ```bash
 npm install       # instala as dependências
-npm run dev       # inicia o servidor de desenvolvimento (Vite)
-npm run build     # type-check (tsc -b) + build de produção em dist/
+npm run dev       # inicia o servidor de desenvolvimento (Vite, porta 5173)
 npm run preview   # serve o build de produção localmente
-npm run lint      # roda o ESLint no projeto
-```
-
-Para adicionar novos componentes do Shadcn/UI:
-
-```bash
-npx shadcn add <componente>
 ```

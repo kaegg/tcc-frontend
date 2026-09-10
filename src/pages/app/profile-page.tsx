@@ -36,8 +36,7 @@ export function ProfilePage() {
 
   // "Perfil" e "Configurações" são dois itens do menu que abrem a mesma tela em
   // abas diferentes.
-  const defaultTab =
-    pathname === paths.app.settings ? "preferencias" : "dados"
+  const defaultTab = pathname === paths.app.settings ? "preferencias" : "dados"
 
   function notifyPending(area: string) {
     toast.info(`${area} ainda não é persistido`, {

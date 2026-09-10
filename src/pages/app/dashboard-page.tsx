@@ -1,5 +1,13 @@
 import { Link } from "react-router-dom"
-import { ArrowRight, PiggyBank, Plus, Sparkles, TrendingDown, TrendingUp, Wallet } from "lucide-react"
+import {
+  ArrowRight,
+  PiggyBank,
+  Plus,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react"
 
 import { CategoryBreakdown } from "@/components/app/category-breakdown"
 import { MonthlyFlowChart } from "@/components/app/monthly-flow-chart"
@@ -24,7 +32,12 @@ import {
 } from "@/components/ui/table"
 import { categoryName, monthlySeries, transactions } from "@/lib/demo-data"
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format"
-import { inMonth, sortByDateDesc, sumTotals, totalsByCategory } from "@/lib/finance"
+import {
+  inMonth,
+  sortByDateDesc,
+  sumTotals,
+  totalsByCategory,
+} from "@/lib/finance"
 import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
@@ -192,7 +205,7 @@ export function DashboardPage() {
                         "financial-value pr-6 text-right",
                         item.type === "receita"
                           ? "text-success"
-                          : "text-foreground"
+                          : "text-foreground",
                       )}
                     >
                       {item.type === "receita" ? "+" : "−"}{" "}

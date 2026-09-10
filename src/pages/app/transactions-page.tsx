@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Eye, Inbox, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react"
+import {
+  Eye,
+  Inbox,
+  Pencil,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { PageHeader } from "@/components/app/page-header"
@@ -202,7 +210,11 @@ export function TransactionsPage() {
               </EmptyHeader>
               <EmptyContent>
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button variant="outline" className="h-9" onClick={clearFilters}>
+                  <Button
+                    variant="outline"
+                    className="h-9"
+                    onClick={clearFilters}
+                  >
                     Limpar filtros
                   </Button>
                   <Link
@@ -253,7 +265,7 @@ export function TransactionsPage() {
                     <TableCell
                       className={cn(
                         "financial-value text-right",
-                        item.type === "receita" && "text-success"
+                        item.type === "receita" && "text-success",
                       )}
                     >
                       {item.type === "receita" ? "+" : "−"}{" "}
@@ -273,9 +285,7 @@ export function TransactionsPage() {
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`Editar ${item.description}`}
-                          render={
-                            <Link to={paths.app.newTransaction} />
-                          }
+                          render={<Link to={paths.app.newTransaction} />}
                           nativeButton={false}
                         >
                           <Pencil />

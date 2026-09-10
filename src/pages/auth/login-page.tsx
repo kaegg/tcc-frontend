@@ -36,8 +36,8 @@ export function LoginPage() {
   // A rota que o usuário tentou abrir antes de cair no login, guardada pelo
   // ProtectedRoute. Sem ela, o destino padrão é o dashboard.
   const from =
-    (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
-    paths.app.dashboard
+    (location.state as { from?: { pathname: string } } | null)?.from
+      ?.pathname ?? paths.app.dashboard
 
   // Sem backend, o envio apenas simula a latência e segue para a área privada,
   // deixando o protótipo navegável. A autenticação real entra na implementação do backend.
@@ -113,7 +113,10 @@ export function LoginPage() {
 
           <Link
             to={paths.public.register}
-            className={cn(buttonVariants({ variant: "outline" }), "h-10 w-full")}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-10 w-full",
+            )}
           >
             Criar conta
           </Link>

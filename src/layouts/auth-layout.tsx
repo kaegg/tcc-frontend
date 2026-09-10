@@ -123,7 +123,9 @@ function PreviewField({
   return (
     <div className="rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-border">
       <span className="text-[11px] text-muted-foreground">{label}</span>
-      <div className={mono ? "financial-value text-sm" : "text-sm"}>{value}</div>
+      <div className={mono ? "financial-value text-sm" : "text-sm"}>
+        {value}
+      </div>
     </div>
   )
 }

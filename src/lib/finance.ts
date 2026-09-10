@@ -31,13 +31,16 @@ export function sumTotals(items: Transaction[]): Totals {
 /** Agrupa por categoria e ordena do maior para o menor. */
 export function totalsByCategory(
   items: Transaction[],
-  type: TransactionType
+  type: TransactionType,
 ): CategoryTotal[] {
   const totals = new Map<string, number>()
 
   for (const item of items) {
     if (item.type !== type) continue
-    totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + item.amount)
+    totals.set(
+      item.categoryId,
+      (totals.get(item.categoryId) ?? 0) + item.amount,
+    )
   }
 
   return [...totals.entries()]

@@ -2,7 +2,10 @@ import { ChartNoAxesCombined } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-export function LogoMark({ className, ...props }: React.ComponentProps<typeof ChartNoAxesCombined>) {
+export function LogoMark({
+  className,
+  ...props
+}: React.ComponentProps<typeof ChartNoAxesCombined>) {
   return <ChartNoAxesCombined className={cn("size-5", className)} {...props} />
 }
 
