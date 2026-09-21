@@ -138,22 +138,24 @@ function toApiError(
   })
 }
 
+let refreshHandler: (() => Promise<boolean>) | null = null
+
 /**
- * Ponto de extensão do refresh (TCC-009).
- *
- * Quando o refresh existir, esta função passa a devolver `true` e o cliente
- * tenta renovar a sessão uma única vez antes de desistir. `refreshInFlight`
- * está aqui desde já porque, sem ele, várias consultas recebendo 401 ao mesmo
- * tempo disparariam vários refreshes concorrentes.
+ * Registra a renovação de sessão. Injetada, e não importada, porque a
+ * renovação usa este próprio cliente: importá-la fecharia um ciclo de módulos.
+ * O handler precisa ter uma única renovação em andamento por vez — várias
+ * consultas recebendo 401 juntas disparariam vários refreshes, e o segundo
+ * apresentaria um token que o primeiro já trocou.
  */
-function canRefresh(): boolean {
-  return false
+export function setRefreshHandler(handler: (() => Promise<boolean>) | null) {
+  refreshHandler = handler
 }
 
 /** Requisição à API, com contrato validado na resposta. */
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions<T>,
+  isRetry = false,
 ): Promise<T> {
   const {
     schema,
@@ -197,7 +199,13 @@ export async function apiRequest<T>(
   if (!readAsSuccess) {
     const apiError = toApiError(response, payload, path)
 
-    if (apiError.statusCode === 401 && !skipAuthHandling && !canRefresh()) {
+    if (apiError.statusCode === 401 && !skipAuthHandling) {
+      // Uma única nova tentativa: se o token renovado também levar 401, o
+      // problema não é expiração e repetir só faria laço.
+      if (!isRetry && refreshHandler && (await refreshHandler())) {
+        return apiRequest(path, options, true)
+      }
+
       clearAccessToken()
       markSessionExpired()
     }

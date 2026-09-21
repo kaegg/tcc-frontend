@@ -1,10 +1,12 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2 } from "lucide-react"
+import { useMutation } from "@tanstack/react-query"
+import { CircleAlert, Loader2 } from "lucide-react"
 
 import { AuthCard } from "@/components/auth/auth-card"
 import { PasswordInput } from "@/components/auth/password-input"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Field,
@@ -15,8 +17,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { clearSessionExpired } from "@/lib/api/session-store"
-import { simulateRequest } from "@/lib/pending-backend"
+import { signIn } from "@/lib/api/auth-session"
+import { describeApiError, isApiError } from "@/lib/api/errors"
 import { loginSchema, type LoginValues } from "@/pages/auth/auth-schemas"
 import { paths } from "@/routes/paths"
 
@@ -27,7 +29,7 @@ export function LoginPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -39,24 +41,35 @@ export function LoginPage() {
     (location.state as { from?: { pathname: string } } | null)?.from
       ?.pathname ?? paths.app.dashboard
 
-  // Sem backend, o envio apenas simula a latência e segue para a área privada,
-  // deixando o protótipo navegável. A autenticação real entra na implementação do backend.
-  async function onSubmit() {
-    await simulateRequest()
+  const entrar = useMutation({
+    mutationFn: signIn,
+    onSuccess: () => navigate(from, { replace: true }),
+  })
 
-    // Limpar o sinal de expiração é obrigatório antes de voltar: sem isto, a
-    // rota protegida encontraria a sessão ainda marcada como expirada e
-    // mandaria o usuário de volta ao login, em laço.
-    clearSessionExpired()
-    navigate(from, { replace: true })
-  }
+  // O 401 do login é "credencial errada", e a mensagem do servidor já é a
+  // certa; o texto genérico de 401 do restante da API fala em sessão expirada.
+  const mensagemDeFalha =
+    isApiError(entrar.error) && entrar.error.statusCode === 401
+      ? entrar.error.message
+      : describeApiError(entrar.error)
 
   return (
     <AuthCard
       title="Entrar na sua conta"
       description="Acesse para registrar receitas e despesas por formulário ou conversando com o assistente."
     >
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <form
+        onSubmit={handleSubmit((values) => entrar.mutate(values))}
+        noValidate
+      >
+        {entrar.isError ? (
+          <Alert variant="destructive" className="mb-6">
+            <CircleAlert />
+            <AlertTitle>Não foi possível entrar</AlertTitle>
+            <AlertDescription>{mensagemDeFalha}</AlertDescription>
+          </Alert>
+        ) : null}
+
         <FieldGroup>
           <Field data-invalid={Boolean(errors.email)}>
             <FieldLabel htmlFor="email">E-mail</FieldLabel>
@@ -94,8 +107,12 @@ export function LoginPage() {
             <FieldError id="password-error" errors={[errors.password]} />
           </Field>
 
-          <Button type="submit" className="h-10 w-full" disabled={isSubmitting}>
-            {isSubmitting ? (
+          <Button
+            type="submit"
+            className="h-10 w-full"
+            disabled={entrar.isPending}
+          >
+            {entrar.isPending ? (
               <>
                 <Loader2 className="animate-spin" />
                 Entrando...

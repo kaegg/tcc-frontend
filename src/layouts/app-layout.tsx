@@ -1,5 +1,6 @@
-import { Link, Outlet } from "react-router-dom"
+import { Link, Outlet, useNavigate } from "react-router-dom"
 import { LogOut, Settings, User } from "lucide-react"
+import { toast } from "sonner"
 
 import { ApiStatusBanner } from "@/components/app/api-status-banner"
 import { AppSidebar } from "@/components/app/app-sidebar"
@@ -19,7 +20,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { useSession } from "@/hooks/use-session"
+import { useAuthenticatedUser } from "@/hooks/use-session"
+import { signOut } from "@/lib/api/auth-session"
 import { paths } from "@/routes/paths"
 
 /**
@@ -27,7 +29,21 @@ import { paths } from "@/routes/paths"
  * conteúdo onde cada tela é renderizada.
  */
 export function AppLayout() {
-  const { user } = useSession()
+  const user = useAuthenticatedUser()
+  const navigate = useNavigate()
+
+  async function handleSignOut() {
+    const confirmed = await signOut()
+
+    if (!confirmed) {
+      toast.warning("Não foi possível confirmar o encerramento no servidor", {
+        description:
+          "Você saiu deste navegador, mas a sessão pode continuar ativa. Tente sair novamente quando a conexão voltar.",
+      })
+    }
+
+    navigate(paths.public.login, { replace: true })
+  }
 
   return (
     <SidebarProvider>
@@ -74,7 +90,7 @@ export function AppLayout() {
                   Configurações
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link to={paths.public.login} />}>
+                <DropdownMenuItem onClick={() => void handleSignOut()}>
                   <LogOut />
                   Sair
                 </DropdownMenuItem>
