@@ -125,7 +125,7 @@ function toApiError(
     })
   }
 
-  const { message } = parsed.data
+  const { message, fieldErrors } = parsed.data
   const messages = Array.isArray(message) ? message : [message]
 
   return new ApiError({
@@ -133,6 +133,7 @@ function toApiError(
     statusCode: parsed.data.statusCode,
     message: messages[0] ?? defaultMessageForStatus(response.status),
     messages,
+    fieldErrors,
     path: parsed.data.path,
   })
 }
@@ -251,11 +252,19 @@ function toTransportError(
   })
 }
 
-/** Atalho para leitura, que é o único verbo usado nesta etapa. */
 export function apiGet<T>(
   path: string,
   schema: z.ZodType<T>,
   options?: Omit<RequestOptions<T>, "schema" | "method" | "body">,
 ): Promise<T> {
   return apiRequest(path, { ...options, schema, method: "GET" })
+}
+
+export function apiPost<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+  options?: Omit<RequestOptions<T>, "schema" | "method" | "body">,
+): Promise<T> {
+  return apiRequest(path, { ...options, schema, method: "POST", body })
 }
