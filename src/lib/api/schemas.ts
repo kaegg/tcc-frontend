@@ -74,6 +74,22 @@ export const userSchema = z.object({
 })
 
 /**
+ * Lançamento. Dinheiro é string decimal de duas casas e data civil é
+ * `AAAA-MM-DD` (ADR 0002): nenhum dos dois passa por `number` nem `Date`.
+ */
+export const transactionSchema = z.object({
+  id: z.string(),
+  type: transactionTypeSchema,
+  amount: z.string(),
+  date: z.string(),
+  description: z.string(),
+  categoryId: z.string(),
+  source: z.enum(["formulario", "assistente"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+/**
  * Resposta de login e de refresh. O refresh token não aparece aqui de
  * propósito: ele viaja só em cookie httpOnly, que o JavaScript não lê.
  */
@@ -85,6 +101,7 @@ export const authSchema = z.object({
 })
 
 export type TransactionType = z.infer<typeof transactionTypeSchema>
+export type ApiTransaction = z.infer<typeof transactionSchema>
 export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation } from "@tanstack/react-query"
 import { CircleAlert, Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -34,10 +35,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/use-categories"
-import { describeApiError } from "@/lib/api/errors"
+import { describeApiError, fieldErrorsOf } from "@/lib/api/errors"
+import { amountToApi, createTransaction } from "@/lib/api/transactions"
 import { todayIso } from "@/lib/format"
 import type { Category } from "@/lib/api/schemas"
-import { simulateRequest } from "@/lib/pending-backend"
 import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
@@ -60,7 +61,12 @@ function createTransactionSchema(categories: Category[]) {
       type: z.enum(["receita", "despesa"]),
       amount: z
         .number({ error: "Informe o valor." })
-        .positive("O valor deve ser maior que zero."),
+        .positive("O valor deve ser maior que zero.")
+        .max(9_999_999_999.99, "O valor deve ser no máximo 9.999.999.999,99.")
+        .refine(
+          (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6,
+          "Use no máximo duas casas decimais.",
+        ),
       categoryId: z.string().min(1, "Selecione uma categoria."),
       date: z.string().min(1, "Informe a data."),
       description: z
@@ -80,6 +86,11 @@ function createTransactionSchema(categories: Category[]) {
 }
 
 type Values = z.infer<ReturnType<typeof createTransactionSchema>>
+
+const CAMPOS = ["type", "amount", "categoryId", "date", "description"] as const
+
+const ehCampo = (campo: string): campo is (typeof CAMPOS)[number] =>
+  (CAMPOS as readonly string[]).includes(campo)
 
 export function NewTransactionPage() {
   const navigate = useNavigate()
@@ -112,7 +123,8 @@ export function NewTransactionPage() {
     handleSubmit,
     control,
     setValue,
-    formState: { errors, isSubmitting },
+    setError,
+    formState: { errors },
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -136,12 +148,36 @@ export function NewTransactionPage() {
     setValue("categoryId", "")
   }
 
-  async function onSubmit(values: Values) {
-    await simulateRequest()
-    toast.success("Lançamento salvo", {
-      description: `${values.description} — a persistência real entra com o backend.`,
-    })
-    navigate(paths.app.transactions)
+  const salvar = useMutation({
+    mutationFn: (values: Values) =>
+      createTransaction({
+        type: values.type,
+        amount: amountToApi(values.amount),
+        categoryId: values.categoryId,
+        date: values.date,
+        description: values.description,
+      }),
+    onSuccess: (criado) => {
+      toast.success("Lançamento salvo", { description: criado.description })
+      navigate(paths.app.transactions)
+    },
+    onError: (erro) => {
+      // O backend devolve a falha por campo; ela é marcada no campo que a causou.
+      for (const [campo, mensagens] of Object.entries(fieldErrorsOf(erro))) {
+        if (ehCampo(campo) && mensagens[0]) {
+          setError(campo, { message: mensagens[0] })
+        }
+      }
+    },
+  })
+
+  const camposDaFalha = Object.keys(fieldErrorsOf(salvar.error))
+  const falhaGeral =
+    salvar.isError &&
+    (camposDaFalha.length === 0 || !camposDaFalha.every(ehCampo))
+
+  function onSubmit(values: Values) {
+    salvar.mutate(values)
   }
 
   return (
@@ -182,6 +218,16 @@ export function NewTransactionPage() {
                         ? "Carregando..."
                         : "Tentar novamente"}
                     </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {falhaGeral ? (
+                <Alert variant="destructive" className="mb-6">
+                  <CircleAlert />
+                  <AlertTitle>Não foi possível salvar o lançamento</AlertTitle>
+                  <AlertDescription>
+                    {describeApiError(salvar.error)}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -318,10 +364,10 @@ export function NewTransactionPage() {
                     type="submit"
                     className="h-10 sm:w-32"
                     disabled={
-                      isSubmitting || loadingCategories || categoriesFailed
+                      salvar.isPending || loadingCategories || categoriesFailed
                     }
                   >
-                    {isSubmitting ? (
+                    {salvar.isPending ? (
                       <>
                         <Loader2 className="animate-spin" />
                         Salvando...
