@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/auth"
 import { setRefreshHandler } from "@/lib/api/client"
 import { queryClient } from "@/lib/api/query-client"
-import type { AuthResponse } from "@/lib/api/schemas"
+import type { AuthResponse, User as ApiUser } from "@/lib/api/schemas"
 import { clearSessionExpired } from "@/lib/api/session-store"
 import type { User } from "@/lib/types"
 
@@ -56,17 +56,25 @@ function initialsOf(name: string): string {
   return (first + last).toUpperCase()
 }
 
+function toSessionUser(user: ApiUser): User {
+  return {
+    name: user.name,
+    email: user.email,
+    initials: initialsOf(user.name),
+  }
+}
+
 function beginSession(auth: AuthResponse): void {
   setAccessToken(auth.accessToken)
   clearSessionExpired()
-  setState({
-    status: "authenticated",
-    user: {
-      name: auth.user.name,
-      email: auth.user.email,
-      initials: initialsOf(auth.user.name),
-    },
-  })
+  setState({ status: "authenticated", user: toSessionUser(auth.user) })
+}
+
+/** Reflete no menu e no perfil um dado alterado, sem esperar a próxima renovação. */
+export function updateSessionUser(user: ApiUser): void {
+  if (state.status !== "authenticated") return
+
+  setState({ status: "authenticated", user: toSessionUser(user) })
 }
 
 function endSession(): void {

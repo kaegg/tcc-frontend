@@ -2,7 +2,8 @@ import { useLocation } from "react-router-dom"
 import { toast } from "sonner"
 
 import { PageHeader } from "@/components/app/page-header"
-import { PasswordInput } from "@/components/auth/password-input"
+import { ChangePasswordForm } from "@/components/profile/change-password-form"
+import { ProfileDataForm } from "@/components/profile/profile-data-form"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,13 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import {
   Select,
   SelectContent,
@@ -88,41 +83,7 @@ export function ProfilePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  notifyPending("Perfil")
-                }}
-              >
-                <FieldGroup>
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="nome">Nome</FieldLabel>
-                      <Input
-                        id="nome"
-                        defaultValue={user.name}
-                        autoComplete="name"
-                        className="h-10"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="email">E-mail</FieldLabel>
-                      <Input
-                        id="email"
-                        type="email"
-                        defaultValue={user.email}
-                        autoComplete="email"
-                        className="h-10"
-                      />
-                    </Field>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit" className="h-10 sm:w-40">
-                      Salvar alterações
-                    </Button>
-                  </div>
-                </FieldGroup>
-              </form>
+              <ProfileDataForm />
             </CardContent>
           </Card>
         </TabsContent>
@@ -136,38 +97,7 @@ export function ProfilePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  notifyPending("Senha")
-                }}
-              >
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="senha-atual">Senha atual</FieldLabel>
-                    <PasswordInput
-                      id="senha-atual"
-                      autoComplete="current-password"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="senha-nova">Nova senha</FieldLabel>
-                    <PasswordInput
-                      id="senha-nova"
-                      autoComplete="new-password"
-                      aria-describedby="senha-nova-hint"
-                    />
-                    <FieldDescription id="senha-nova-hint">
-                      Pelo menos 8 caracteres, com letras e números.
-                    </FieldDescription>
-                  </Field>
-                  <div className="flex justify-end">
-                    <Button type="submit" className="h-10 sm:w-40">
-                      Alterar senha
-                    </Button>
-                  </div>
-                </FieldGroup>
-              </form>
+              <ChangePasswordForm />
             </CardContent>
           </Card>
         </TabsContent>

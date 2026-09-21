@@ -5,6 +5,7 @@ import type { TransactionType } from "@/lib/api/schemas"
  */
 export const queryKeys = {
   health: ["health"] as const,
+  me: ["me"] as const,
   categories: (type?: TransactionType) =>
     type ? (["categories", { type }] as const) : (["categories"] as const),
 }
