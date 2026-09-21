@@ -5,6 +5,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
   TIMEOUT_MESSAGE,
 } from "@/lib/api/messages"
+import type { FieldErrors } from "@/lib/api/schemas"
 
 /**
  * Natureza da falha, para a interface decidir o que mostrar e o cache decidir
@@ -29,6 +30,7 @@ export class ApiError extends Error {
   statusCode?: number
   /** Sempre lista: o ValidationPipe do backend devolve uma mensagem por violação. */
   messages: string[]
+  fieldErrors?: FieldErrors
   path?: string
 
   constructor(options: {
@@ -36,6 +38,7 @@ export class ApiError extends Error {
     message: string
     statusCode?: number
     messages?: string[]
+    fieldErrors?: FieldErrors
     path?: string
     cause?: unknown
   }) {
@@ -44,6 +47,7 @@ export class ApiError extends Error {
     this.kind = options.kind
     this.statusCode = options.statusCode
     this.messages = options.messages ?? [options.message]
+    this.fieldErrors = options.fieldErrors
     this.path = options.path
   }
 
@@ -89,6 +93,13 @@ export function describeApiError(error: unknown): string {
       if (error.statusCode === 401) return SESSION_EXPIRED_MESSAGE
       return error.messages[0] ?? GENERIC_ERROR_MESSAGE
   }
+}
+
+/**
+ * Erros por campo de uma falha, se houver.
+ */
+export function fieldErrorsOf(error: unknown): FieldErrors {
+  return (isApiError(error) && error.fieldErrors) || {}
 }
 
 /** Mensagem padrão por faixa de status, quando o corpo não traz uma. */

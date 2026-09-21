@@ -63,6 +63,14 @@ export const apiErrorBodySchema = z.object({
   message: z.union([z.string(), z.array(z.string())]),
   path: z.string(),
   timestamp: z.string(),
+  fieldErrors: z.record(z.string(), z.array(z.string())).optional(),
+})
+
+export const userSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  createdAt: z.string(),
 })
 
 export type TransactionType = z.infer<typeof transactionTypeSchema>
@@ -70,3 +78,7 @@ export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>
 export type Health = z.infer<typeof healthSchema>
 export type ApiErrorBody = z.infer<typeof apiErrorBodySchema>
+export type User = z.infer<typeof userSchema>
+
+/** Mensagens de erro agrupadas pelo campo que as produziu. */
+export type FieldErrors = NonNullable<ApiErrorBody["fieldErrors"]>

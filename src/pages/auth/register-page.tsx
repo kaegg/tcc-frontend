@@ -1,10 +1,13 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { useMutation } from "@tanstack/react-query"
+import { ArrowLeft, CircleAlert, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { AuthCard } from "@/components/auth/auth-card"
 import { PasswordInput } from "@/components/auth/password-input"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Field,
@@ -14,10 +17,20 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { describeApiError, fieldErrorsOf } from "@/lib/api/errors"
+import { createUser, type CreateUserInput } from "@/lib/api/users"
 import { cn } from "@/lib/utils"
-import { simulateRequest } from "@/lib/pending-backend"
 import { registerSchema, type RegisterValues } from "@/pages/auth/auth-schemas"
 import { paths } from "@/routes/paths"
+
+/** Campos do formulário que o backend também conhece pelo nome. */
+const CAMPOS_DO_FORMULARIO = ["name", "email", "password"] as const
+
+type CampoDoFormulario = (typeof CAMPOS_DO_FORMULARIO)[number]
+
+function ehCampoDoFormulario(campo: string): campo is CampoDoFormulario {
+  return (CAMPOS_DO_FORMULARIO as readonly string[]).includes(campo)
+}
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -25,7 +38,8 @@ export function RegisterPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    setError,
+    formState: { errors },
   } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -36,11 +50,42 @@ export function RegisterPage() {
     },
   })
 
-  // Sem backend, o envio apenas simula a latência e segue para a área privada.
-  async function onSubmit() {
-    await simulateRequest()
-    navigate(paths.app.dashboard, { replace: true })
+  const criarConta = useMutation({
+    mutationFn: (input: CreateUserInput) => createUser(input),
+    onSuccess: () => {
+      toast.success("Conta criada", {
+        description: "Entre com seu e-mail e senha para continuar.",
+      })
+      navigate(paths.public.login, { replace: true })
+    },
+    onError: (erro) => {
+      // O backend devolve a falha por campo, inclusive o e-mail já cadastrado,
+      // então ela é marcada no campo que a causou em vez de num aviso solto.
+      for (const [campo, mensagens] of Object.entries(fieldErrorsOf(erro))) {
+        if (ehCampoDoFormulario(campo) && mensagens[0]) {
+          setError(campo, { message: mensagens[0] })
+        }
+      }
+    },
+  })
+
+  function onSubmit(values: RegisterValues) {
+    // A confirmação de senha não vai no corpo: ela existe só para comparar os
+    // dois campos aqui, e o backend recusa qualquer campo fora do contrato.
+    criarConta.mutate({
+      name: values.name,
+      email: values.email,
+      password: values.password,
+    })
   }
+
+  const camposDaFalha = Object.keys(fieldErrorsOf(criarConta.error))
+
+  // Só o que não coube em nenhum campo vira aviso no topo: falha de rede, de
+  // contrato, ou um campo que este formulário não conhece.
+  const falhaGeral =
+    criarConta.isError &&
+    (camposDaFalha.length === 0 || !camposDaFalha.every(ehCampoDoFormulario))
 
   return (
     <AuthCard
@@ -48,6 +93,16 @@ export function RegisterPage() {
       description="Leva menos de um minuto. Depois você escolhe como registrar seus lançamentos."
     >
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        {falhaGeral ? (
+          <Alert variant="destructive" className="mb-6">
+            <CircleAlert />
+            <AlertTitle>Não foi possível criar a conta</AlertTitle>
+            <AlertDescription>
+              {describeApiError(criarConta.error)}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <FieldGroup>
           <Field data-invalid={Boolean(errors.name)}>
             <FieldLabel htmlFor="name">Nome</FieldLabel>
@@ -121,8 +176,12 @@ export function RegisterPage() {
             />
           </Field>
 
-          <Button type="submit" className="h-10 w-full" disabled={isSubmitting}>
-            {isSubmitting ? (
+          <Button
+            type="submit"
+            className="h-10 w-full"
+            disabled={criarConta.isPending}
+          >
+            {criarConta.isPending ? (
               <>
                 <Loader2 className="animate-spin" />
                 Criando conta...
