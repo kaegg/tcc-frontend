@@ -91,8 +91,11 @@ O cliente fica em `src/lib/api/client.ts` e usa `fetch` nativo, sem dependência
 - **Token em memória** (`src/lib/api/auth-token.ts`), nunca em `localStorage`: o que está no
   armazenamento do navegador é legível por qualquer script, então um único XSS entregaria a
   credencial. A persistência entre recarregamentos fica com o cookie httpOnly de refresh, na TCC-009.
-- **Sessão expirada** — um 401 limpa o token e marca a sessão em `src/lib/api/session-store.ts`; as
-  rotas protegidas redirecionam guardando a rota pretendida, e o login limpa a marca ao entrar.
+- **Sessão** — o access token vive só em memória (`auth-token.ts`); o refresh fica em cookie httpOnly
+  que o JavaScript não lê. Ao abrir a página, `ProtectedRoute` chama `restoreSession()`. Um 401 renova
+  a sessão uma vez (`auth-session.ts`) e repete a requisição; se a renovação falha, o token é limpo e a
+  sessão marcada como expirada em `session-store.ts`. As rotas protegidas redirecionam guardando a rota
+  pretendida, e o login limpa a marca ao entrar. Sair revoga a sessão no servidor e limpa o cache de consultas.
 
 Onde cada erro aparece na interface:
 

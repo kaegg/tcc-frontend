@@ -27,11 +27,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useSession } from "@/hooks/use-session"
+import { useAuthenticatedUser } from "@/hooks/use-session"
 import { paths } from "@/routes/paths"
 
 export function ProfilePage() {
-  const { user } = useSession()
+  const user = useAuthenticatedUser()
   const { pathname } = useLocation()
 
   // "Perfil" e "Configurações" são dois itens do menu que abrem a mesma tela em

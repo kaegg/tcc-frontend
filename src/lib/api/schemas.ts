@@ -73,7 +73,19 @@ export const userSchema = z.object({
   createdAt: z.string(),
 })
 
+/**
+ * Resposta de login e de refresh. O refresh token não aparece aqui de
+ * propósito: ele viaja só em cookie httpOnly, que o JavaScript não lê.
+ */
+export const authSchema = z.object({
+  accessToken: z.string(),
+  tokenType: z.literal("Bearer"),
+  expiresIn: z.number(),
+  user: userSchema,
+})
+
 export type TransactionType = z.infer<typeof transactionTypeSchema>
+export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>
 export type Health = z.infer<typeof healthSchema>
