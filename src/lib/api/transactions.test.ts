@@ -14,6 +14,7 @@ const ENTRADA = {
 const CRIADO = {
   id: "0199a1b2-c3d4-7000-8000-0000000000f1",
   ...ENTRADA,
+  categoryName: "Alimentação",
   source: "formulario",
   createdAt: "2026-09-21T15:00:00.000Z",
   updatedAt: "2026-09-21T15:00:00.000Z",
