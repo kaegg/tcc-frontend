@@ -114,6 +114,22 @@ export const periodSummarySchema = z.object({
   transactionCount: z.number().int().nonnegative(),
 })
 
+/** Uma categoria na distribuição do mês; `share` é percentual do tipo. */
+export const categoryTotalSchema = z.object({
+  categoryId: z.string(),
+  categoryName: z.string(),
+  total: moneySchema,
+  transactionCount: z.number().int().nonnegative(),
+  share: z.string().regex(/^\d{1,3}\.\d{2}$/),
+})
+
+/** Resumo do mês (TCC-017): totais do período mais a distribuição por categoria. */
+export const monthlySummarySchema = periodSummarySchema.extend({
+  month: z.string(),
+  incomeByCategory: z.array(categoryTotalSchema),
+  expenseByCategory: z.array(categoryTotalSchema),
+})
+
 /**
  * Resposta de login e de refresh. O refresh token não aparece aqui de
  * propósito: ele viaja só em cookie httpOnly, que o JavaScript não lê.
@@ -129,6 +145,8 @@ export type TransactionType = z.infer<typeof transactionTypeSchema>
 export type ApiTransaction = z.infer<typeof transactionSchema>
 export type TransactionList = z.infer<typeof transactionListSchema>
 export type PeriodSummary = z.infer<typeof periodSummarySchema>
+export type CategoryTotal = z.infer<typeof categoryTotalSchema>
+export type MonthlySummary = z.infer<typeof monthlySummarySchema>
 export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>
