@@ -48,18 +48,25 @@ let fetchMock: ReturnType<typeof vi.fn>
 type Resposta = { status: number; body: unknown }
 
 /** Roteia por caminho e consulta: a página faz a listagem e, ao abrir, o detalhe. */
-function rotas(tabela: (url: URL) => Resposta) {
-  fetchMock.mockImplementation((url: string) => {
-    const { status, body } = tabela(new URL(url))
+function rotas(tabela: (url: URL, method: string) => Resposta) {
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    const { status, body } = tabela(new URL(url), init?.method ?? "GET")
 
     return Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      }),
+      status === 204
+        ? new Response(null, { status })
+        : new Response(JSON.stringify(body), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          }),
     )
   })
 }
+
+const chamadasDe = (method: string) =>
+  fetchMock.mock.calls.filter(
+    (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === method,
+  )
 
 function renderizar(): void {
   const client = new QueryClient({
@@ -253,17 +260,99 @@ describe("TransactionsPage", () => {
     )
   })
 
-  it("não oferece editar nem excluir enquanto isso não existir na API", async () => {
+  it("oferece editar cada lançamento pela rota de edição", async () => {
     rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
     renderizar()
 
-    await screen.findByText("Almoço no campus")
+    const editar = await screen.findByRole("link", {
+      name: "Editar Almoço no campus",
+    })
 
-    expect(
-      screen.queryByRole("button", { name: /Editar/ }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", { name: /Excluir/ }),
-    ).not.toBeInTheDocument()
+    expect(editar).toHaveAttribute("href", `/lancamentos/${ID_1}/editar`)
+  })
+
+  describe("exclusão", () => {
+    it("pede confirmação mostrando o que será excluído, e cancelar não exclui", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
+      const user = userEvent.setup()
+      renderizar()
+
+      await user.click(
+        await screen.findByRole("button", { name: "Excluir Almoço no campus" }),
+      )
+
+      const dialogo = await screen.findByRole("alertdialog")
+      expect(
+        within(dialogo).getByText("Excluir lançamento?"),
+      ).toBeInTheDocument()
+      expect(within(dialogo).getByText("Almoço no campus")).toBeInTheDocument()
+      expect(within(dialogo).getByText(/35,90/)).toBeInTheDocument()
+      expect(within(dialogo).getByText("31/08/2026")).toBeInTheDocument()
+
+      await user.click(
+        within(dialogo).getByRole("button", { name: "Cancelar" }),
+      )
+
+      await waitFor(() =>
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+      )
+      expect(chamadasDe("DELETE")).toHaveLength(0)
+    })
+
+    it("só exclui depois de confirmar, e a lista é recarregada", async () => {
+      let excluido = false
+      rotas((_, method) => {
+        if (method === "DELETE") {
+          excluido = true
+          return { status: 204, body: null }
+        }
+        return {
+          status: 200,
+          body: pagina(
+            excluido
+              ? [item(ID_2, { description: "Fica" })]
+              : [item(ID_1), item(ID_2, { description: "Fica" })],
+          ),
+        }
+      })
+      const user = userEvent.setup()
+      renderizar()
+
+      await user.click(
+        await screen.findByRole("button", { name: "Excluir Almoço no campus" }),
+      )
+      expect(chamadasDe("DELETE")).toHaveLength(0)
+
+      const dialogo = await screen.findByRole("alertdialog")
+      await user.click(within(dialogo).getByRole("button", { name: "Excluir" }))
+
+      await waitFor(() =>
+        expect(screen.queryByText("Almoço no campus")).not.toBeInTheDocument(),
+      )
+      expect(screen.getByText("Fica")).toBeInTheDocument()
+
+      const [[url]] = chamadasDe("DELETE") as [[string]]
+      expect(new URL(url).pathname).toBe(`/api/transactions/${ID_1}`)
+      expect(chamadasDe("DELETE")).toHaveLength(1)
+    })
+
+    it("mantém o diálogo aberto e mostra o erro quando a exclusão falha", async () => {
+      rotas((_, method) =>
+        method === "DELETE"
+          ? { status: 500, body: erroApi(500, "Erro interno.") }
+          : { status: 200, body: pagina([item(ID_1)]) },
+      )
+      const user = userEvent.setup()
+      renderizar()
+
+      await user.click(
+        await screen.findByRole("button", { name: "Excluir Almoço no campus" }),
+      )
+      const dialogo = await screen.findByRole("alertdialog")
+      await user.click(within(dialogo).getByRole("button", { name: "Excluir" }))
+
+      expect(await within(dialogo).findByRole("alert")).toBeInTheDocument()
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument()
+    })
   })
 })

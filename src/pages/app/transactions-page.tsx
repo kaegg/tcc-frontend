@@ -6,13 +6,16 @@ import {
   CircleAlert,
   Eye,
   Inbox,
+  Pencil,
   Plus,
   RefreshCw,
   Sparkles,
+  Trash2,
 } from "lucide-react"
 
 import { PageHeader } from "@/components/app/page-header"
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
+import { DeleteTransactionDialog } from "@/components/transactions/delete-transaction-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -46,7 +49,7 @@ import { describeApiError } from "@/lib/api/errors"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { paths } from "@/routes/paths"
+import { editTransactionPath, paths } from "@/routes/paths"
 
 /**
  * O valor chega como texto decimal e só vira `number` aqui, na exibição:
@@ -60,6 +63,7 @@ const SKELETON_ROWS = 5
 export function TransactionsPage() {
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [toDelete, setToDelete] = useState<ApiTransaction | null>(null)
 
   const query = useTransactions(page)
   const meta = query.data?.meta
@@ -213,6 +217,25 @@ export function TransactionsPage() {
                         >
                           <Eye />
                         </Button>
+                        <Link
+                          to={editTransactionPath(item.id)}
+                          aria-label={`Editar ${item.description}`}
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon-sm",
+                          })}
+                        >
+                          <Pencil />
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive hover:text-destructive"
+                          aria-label={`Excluir ${item.description}`}
+                          onClick={() => setToDelete(item)}
+                        >
+                          <Trash2 />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -256,6 +279,15 @@ export function TransactionsPage() {
       </Card>
 
       <TransactionDetails id={selectedId} onClose={() => setSelectedId(null)} />
+
+      <DeleteTransactionDialog
+        item={toDelete}
+        onClose={() => setToDelete(null)}
+        onDeleted={() => {
+          // Excluir o único item da última página a deixaria vazia.
+          if (items.length === 1 && page > 1) setPage((current) => current - 1)
+        }}
+      />
     </div>
   )
 }
