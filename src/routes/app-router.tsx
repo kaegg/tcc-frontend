@@ -7,6 +7,7 @@ import { LoginPage } from "@/pages/auth/login-page"
 import { RegisterPage } from "@/pages/auth/register-page"
 import { AssistantPage } from "@/pages/app/assistant-page"
 import { DashboardPage } from "@/pages/app/dashboard-page"
+import { EditTransactionPage } from "@/pages/app/edit-transaction-page"
 import { NewTransactionPage } from "@/pages/app/new-transaction-page"
 import { ProfilePage } from "@/pages/app/profile-page"
 import { ReportsPage } from "@/pages/app/reports-page"
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
           { path: paths.app.dashboard, element: <DashboardPage /> },
           { path: paths.app.transactions, element: <TransactionsPage /> },
           { path: paths.app.newTransaction, element: <NewTransactionPage /> },
+          { path: paths.app.editTransaction, element: <EditTransactionPage /> },
           { path: paths.app.reports, element: <ReportsPage /> },
           { path: paths.app.assistant, element: <AssistantPage /> },
           { path: paths.app.profile, element: <ProfilePage /> },

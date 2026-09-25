@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { isApiError } from "@/lib/api/errors"
-import { amountToApi, createTransaction } from "@/lib/api/transactions"
+import {
+  amountToApi,
+  createTransaction,
+  deleteTransaction,
+  updateTransaction,
+} from "@/lib/api/transactions"
 
 const ENTRADA = {
   type: "despesa" as const,
@@ -92,5 +97,64 @@ describe("createTransaction", () => {
     const erro = await createTransaction(ENTRADA).catch((e: unknown) => e)
 
     expect(isApiError(erro) && erro.kind).toBe("contrato")
+  })
+})
+
+describe("updateTransaction", () => {
+  it("envia PATCH /transactions/:id com o formulário inteiro, sem dono nem origem", async () => {
+    responde({ ...CRIADO, amount: "42.00" }, 200)
+
+    const salvo = await updateTransaction(CRIADO.id, {
+      ...ENTRADA,
+      amount: "42.00",
+    })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(url).pathname).toBe(`/api/transactions/${CRIADO.id}`)
+    expect(init.method).toBe("PATCH")
+    expect(JSON.parse(init.body as string)).toEqual({
+      ...ENTRADA,
+      amount: "42.00",
+    })
+    expect(salvo.amount).toBe("42.00")
+  })
+
+  it("codifica o id na URL", async () => {
+    responde(CRIADO, 200)
+
+    await updateTransaction("../users/me", ENTRADA)
+
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toContain("/transactions/..%2Fusers%2Fme")
+  })
+})
+
+describe("deleteTransaction", () => {
+  it("envia DELETE /transactions/:id sem corpo e aceita 204", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(deleteTransaction(CRIADO.id)).resolves.toBeNull()
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(url).pathname).toBe(`/api/transactions/${CRIADO.id}`)
+    expect(init.method).toBe("DELETE")
+    expect(init.body).toBeUndefined()
+  })
+
+  it("propaga o 404 de lançamento que não existe mais", async () => {
+    responde(
+      {
+        statusCode: 404,
+        error: "Not Found",
+        message: "Lançamento não encontrado.",
+        path: `/api/transactions/${CRIADO.id}`,
+        timestamp: "2026-09-24T12:00:00.000Z",
+      },
+      404,
+    )
+
+    const erro = await deleteTransaction(CRIADO.id).catch((e: unknown) => e)
+
+    expect(isApiError(erro) && erro.statusCode).toBe(404)
   })
 })

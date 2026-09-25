@@ -1,4 +1,6 @@
-import { apiGet, apiPost } from "@/lib/api/client"
+import { z } from "zod"
+
+import { apiGet, apiPost, apiRequest } from "@/lib/api/client"
 import {
   transactionListSchema,
   transactionSchema,
@@ -50,6 +52,36 @@ export function fetchTransaction(
   signal?: AbortSignal,
 ): Promise<ApiTransaction> {
   return apiGet(`/transactions/${encodeURIComponent(id)}`, transactionSchema, {
+    signal,
+  })
+}
+
+/**
+ * Envia o formulário inteiro, e não só o que mudou: o backend aceita corpo
+ * parcial (o chatbot altera um campo por vez), mas assim a regra de categoria
+ * compatível é conferida sobre exatamente o que o usuário vê na tela.
+ */
+export function updateTransaction(
+  id: string,
+  input: CreateTransactionInput,
+  signal?: AbortSignal,
+): Promise<ApiTransaction> {
+  return apiRequest(`/transactions/${encodeURIComponent(id)}`, {
+    schema: transactionSchema,
+    method: "PATCH",
+    body: input,
+    signal,
+  })
+}
+
+/** Exclusão lógica no servidor; responde 204. Só chamar depois da confirmação. */
+export function deleteTransaction(
+  id: string,
+  signal?: AbortSignal,
+): Promise<null> {
+  return apiRequest(`/transactions/${encodeURIComponent(id)}`, {
+    schema: z.null(),
+    method: "DELETE",
     signal,
   })
 }
