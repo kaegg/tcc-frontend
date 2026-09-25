@@ -101,6 +101,19 @@ export const transactionListSchema = z.object({
   }),
 })
 
+/** Decimal com duas casas; só o saldo pode vir negativo. */
+const moneySchema = z.string().regex(/^-?\d+\.\d{2}$/)
+
+/** Totais de um período (TCC-016). Saldo = receitas − despesas, do backend. */
+export const periodSummarySchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  income: moneySchema,
+  expense: moneySchema,
+  balance: moneySchema,
+  transactionCount: z.number().int().nonnegative(),
+})
+
 /**
  * Resposta de login e de refresh. O refresh token não aparece aqui de
  * propósito: ele viaja só em cookie httpOnly, que o JavaScript não lê.
@@ -115,6 +128,7 @@ export const authSchema = z.object({
 export type TransactionType = z.infer<typeof transactionTypeSchema>
 export type ApiTransaction = z.infer<typeof transactionSchema>
 export type TransactionList = z.infer<typeof transactionListSchema>
+export type PeriodSummary = z.infer<typeof periodSummarySchema>
 export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>

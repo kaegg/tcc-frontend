@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { queryKeys } from "@/lib/api/query-keys"
+import { invalidateFinancialData } from "@/lib/api/invalidate"
 import { createTransaction } from "@/lib/api/transactions"
 import { todayIso } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -53,10 +53,7 @@ export function NewTransactionPage() {
               }}
               save={createTransaction}
               onSaved={async (criado) => {
-                // A lista precisa refletir o lançamento novo ao chegar em /lancamentos.
-                await queryClient.invalidateQueries({
-                  queryKey: queryKeys.transactionsAll,
-                })
+                await invalidateFinancialData(queryClient)
                 toast.success("Lançamento salvo", {
                   description: criado.description,
                 })

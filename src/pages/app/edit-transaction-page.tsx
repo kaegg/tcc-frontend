@@ -17,7 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTransaction } from "@/hooks/use-transactions"
 import { describeApiError, isApiError } from "@/lib/api/errors"
-import { queryKeys } from "@/lib/api/query-keys"
+import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { updateTransaction } from "@/lib/api/transactions"
 import { cn } from "@/lib/utils"
@@ -82,10 +82,7 @@ function EditForm({ item }: { item: ApiTransaction }) {
       }}
       save={(input) => updateTransaction(item.id, input)}
       onSaved={async (salvo) => {
-        // Lista, detalhe e (quando existirem) relatórios leem do mesmo prefixo.
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.transactionsAll,
-        })
+        await invalidateFinancialData(queryClient)
         toast.success("Lançamento atualizado", {
           description: salvo.description,
         })
