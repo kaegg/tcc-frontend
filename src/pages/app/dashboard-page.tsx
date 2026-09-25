@@ -1,8 +1,10 @@
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import {
   ArrowRight,
-  PiggyBank,
+  CircleAlert,
   Plus,
+  ReceiptText,
+  RefreshCw,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -10,11 +12,12 @@ import {
 } from "lucide-react"
 
 import { CategoryBreakdown } from "@/components/app/category-breakdown"
-import { MonthlyFlowChart } from "@/components/app/monthly-flow-chart"
+import { MonthPicker } from "@/components/app/month-picker"
 import { PageHeader } from "@/components/app/page-header"
-import { StatCard } from "@/components/app/stat-card"
+import { StatCard, StatCardSkeleton } from "@/components/app/stat-card"
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
-import { buttonVariants } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -22,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -30,29 +34,50 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { categoryName, monthlySeries, transactions } from "@/lib/demo-data"
-import { formatCurrency, formatDate, formatPercent } from "@/lib/format"
-import {
-  inMonth,
-  sortByDateDesc,
-  sumTotals,
-  totalsByCategory,
-} from "@/lib/finance"
+import { useMonthlySummary } from "@/hooks/use-reports"
+import { useTransactions } from "@/hooks/use-transactions"
+import { describeApiError } from "@/lib/api/errors"
+import type { CategoryTotal, MonthlySummary } from "@/lib/api/schemas"
+import { formatCurrency, formatDate } from "@/lib/format"
+import { formatMonth, monthFromParams, monthPeriod } from "@/lib/report-month"
 import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
-const currentMonth = inMonth(transactions, 2026, 8)
-const totals = sumTotals(currentMonth)
-const previous = monthlySeries.at(-2)
-const expensesByCategory = totalsByCategory(currentMonth, "despesa").slice(0, 5)
-const latest = sortByDateDesc(transactions).slice(0, 6)
+const LATEST_COUNT = 6
+
+/** Formatação, não aritmética: os valores chegam prontos do backend. */
+const money = (amount: string) => formatCurrency(Number(amount))
 
 export function DashboardPage() {
+  const [params, setParams] = useSearchParams()
+
+  // Mês na URL, como os filtros da listagem e o período dos relatórios.
+  const month = monthFromParams(params)
+  const period = monthPeriod(month)
+  const monthName = formatMonth(month)
+
+  const summary = useMonthlySummary(month)
+  // Mesmo recorte do resumo: as movimentações mostradas são as que ele somou.
+  const latest = useTransactions(1, period)
+
+  function changeMonth(next: string) {
+    setParams(
+      (current) => {
+        const copy = new URLSearchParams(current)
+        copy.set("month", next)
+        return copy
+      },
+      { replace: true },
+    )
+  }
+
+  const monthQuery = new URLSearchParams(period).toString()
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description="Sua situação financeira de agosto de 2026."
+        description={`Sua situação financeira de ${monthName}.`}
         actions={
           <>
             <Link
@@ -73,61 +98,122 @@ export function DashboardPage() {
         }
       />
 
-      <section
-        aria-label="Indicadores do mês"
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        <StatCard
-          label="Saldo atual"
-          value={formatCurrency(totals.saldo)}
-          tone={totals.saldo >= 0 ? "positive" : "negative"}
-          icon={Wallet}
-          delta={{
-            value: "Receitas menos despesas do mês",
-            direction: totals.saldo >= 0 ? "up" : "down",
-          }}
-        />
-        <StatCard
-          label="Receitas do mês"
-          value={formatCurrency(totals.receitas)}
-          icon={TrendingUp}
-          delta={{
-            value: `Mês anterior: ${formatCurrency(previous?.receitas ?? 0)}`,
-            direction: "up",
-          }}
-        />
-        <StatCard
-          label="Despesas do mês"
-          value={formatCurrency(totals.despesas)}
-          icon={TrendingDown}
-          delta={{
-            value: `Mês anterior: ${formatCurrency(previous?.despesas ?? 0)}`,
-            direction: "down",
-          }}
-        />
-        <StatCard
-          label="Economia do mês"
-          value={formatPercent(totals.taxaEconomia)}
-          icon={PiggyBank}
-          delta={{
-            value: `${formatCurrency(totals.saldo)} guardados`,
-            direction: "up",
-          }}
-        />
-      </section>
+      <MonthPicker value={month} onChange={changeMonth} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      {summary.isPending ? (
+        <section
+          aria-label="Carregando resumo do mês"
+          aria-busy="true"
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        >
+          {Array.from({ length: 4 }, (_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </section>
+      ) : summary.isError && !summary.data ? (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Não foi possível carregar o resumo do mês</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>{describeApiError(summary.error)}</p>
+            <Button
+              variant="outline"
+              className="h-8"
+              onClick={() => void summary.refetch()}
+              disabled={summary.isFetching}
+            >
+              <RefreshCw />
+              {summary.isFetching ? "Carregando..." : "Tentar novamente"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <MonthOverview data={summary.data} />
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Receitas e despesas</CardTitle>
-            <CardDescription>Últimos seis meses</CardDescription>
+            <CardTitle>Últimas movimentações</CardTitle>
+            <CardDescription>
+              Os lançamentos mais recentes de {monthName}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <MonthlyFlowChart data={monthlySeries} />
+          <CardContent className="px-0">
+            {latest.isPending ? (
+              <div
+                role="status"
+                aria-label="Carregando movimentações"
+                className="space-y-3 px-6"
+              >
+                {Array.from({ length: 4 }, (_, i) => (
+                  <Skeleton key={i} className="h-9 w-full" />
+                ))}
+              </div>
+            ) : latest.isError && !latest.data ? (
+              <p className="px-6 text-sm text-muted-foreground">
+                {describeApiError(latest.error)}
+              </p>
+            ) : latest.data.data.length === 0 ? (
+              <p className="px-6 text-sm text-muted-foreground">
+                Nenhum lançamento em {monthName}.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-6">Descrição</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="pr-6 text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {latest.data.data.slice(0, LATEST_COUNT).map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="pl-6">
+                        <span className="block max-w-56 truncate">
+                          {item.description}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.categoryName}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <TransactionTypeBadge type={item.type} />
+                      </TableCell>
+                      <TableCell className="financial-value text-muted-foreground">
+                        {formatDate(item.date)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "financial-value pr-6 text-right",
+                          item.type === "receita"
+                            ? "text-success"
+                            : "text-foreground",
+                        )}
+                      >
+                        {item.type === "receita" ? "+" : "−"}{" "}
+                        {money(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            <div className="mt-3 px-6">
+              <Link
+                to={`${paths.app.transactions}?${monthQuery}`}
+                className={cn(buttonVariants({ variant: "ghost" }), "h-9")}
+              >
+                Ver todos os lançamentos do mês
+                <ArrowRight />
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="ring-ai/25">
+        <Card className="ring-ai/25 h-fit lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-ai-accent flex items-center gap-2">
               <Sparkles className="size-4" />
@@ -156,78 +242,85 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Despesas por categoria</CardTitle>
-            <CardDescription>Agosto de 2026</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CategoryBreakdown items={expensesByCategory} />
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Últimas movimentações</CardTitle>
-            <CardDescription>Os seis lançamentos mais recentes</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Descrição</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead className="pr-6 text-right">Valor</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {latest.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="pl-6">
-                      <span className="block max-w-56 truncate">
-                        {item.description}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {categoryName(item.categoryId)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <TransactionTypeBadge type={item.type} />
-                    </TableCell>
-                    <TableCell className="financial-value text-muted-foreground">
-                      {formatDate(item.date)}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "financial-value pr-6 text-right",
-                        item.type === "receita"
-                          ? "text-success"
-                          : "text-foreground",
-                      )}
-                    >
-                      {item.type === "receita" ? "+" : "−"}{" "}
-                      {formatCurrency(item.amount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <Link
-          to={paths.app.transactions}
-          className={cn(buttonVariants({ variant: "ghost" }), "h-9")}
-        >
-          Ver todos os lançamentos
-          <ArrowRight />
-        </Link>
-      </div>
     </div>
+  )
+}
+
+function MonthOverview({ data }: { data: MonthlySummary }) {
+  const balance = Number(data.balance)
+
+  return (
+    <>
+      <section
+        aria-label="Indicadores do mês"
+        aria-live="polite"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+      >
+        <StatCard
+          label="Saldo do mês"
+          value={money(data.balance)}
+          tone={balance > 0 ? "positive" : balance < 0 ? "negative" : "neutral"}
+          icon={Wallet}
+        />
+        <StatCard
+          label="Receitas do mês"
+          value={money(data.income)}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Despesas do mês"
+          value={money(data.expense)}
+          icon={TrendingDown}
+        />
+        <StatCard
+          label="Lançamentos"
+          value={String(data.transactionCount)}
+          icon={ReceiptText}
+        />
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Distribution
+          title="Despesas por categoria"
+          total={data.expense}
+          items={data.expenseByCategory}
+          empty="Nenhuma despesa neste mês."
+        />
+        <Distribution
+          title="Receitas por categoria"
+          total={data.income}
+          items={data.incomeByCategory}
+          empty="Nenhuma receita neste mês."
+        />
+      </div>
+    </>
+  )
+}
+
+function Distribution({
+  title,
+  total,
+  items,
+  empty,
+}: {
+  title: string
+  total: string
+  items: CategoryTotal[]
+  empty: string
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>Total de {money(total)}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{empty}</p>
+        ) : (
+          <CategoryBreakdown items={items} />
+        )}
+      </CardContent>
+    </Card>
   )
 }

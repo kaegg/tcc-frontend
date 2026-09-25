@@ -33,12 +33,6 @@ export type MonthlyPoint = {
   despesas: number
 }
 
-export type CategoryTotal = {
-  categoryId: string
-  name: string
-  total: number
-}
-
 export type ChatRole = "user" | "assistant"
 
 /** Proposta estruturada que o assistente extrai de uma mensagem. Nunca é
