@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { describeApiError, isApiError } from "@/lib/api/errors"
-import { queryKeys } from "@/lib/api/query-keys"
+import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { deleteTransaction } from "@/lib/api/transactions"
 import { formatCurrency, formatDate } from "@/lib/format"
@@ -40,9 +40,7 @@ export function DeleteTransactionDialog({
   const excluir = useMutation({
     mutationFn: (alvo: ApiTransaction) => deleteTransaction(alvo.id),
     onSuccess: async (_, alvo) => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.transactionsAll,
-      })
+      await invalidateFinancialData(queryClient)
       toast.success("Lançamento excluído", { description: alvo.description })
       onDeleted?.(alvo)
       fechar()
@@ -51,9 +49,7 @@ export function DeleteTransactionDialog({
       // Já excluído em outra aba, ou não é mais deste usuário: o objetivo foi
       // alcançado, e a lista precisa parar de mostrá-lo.
       if (isApiError(erro) && erro.statusCode === 404) {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.transactionsAll,
-        })
+        await invalidateFinancialData(queryClient)
         toast.info("Este lançamento já havia sido excluído.")
         fechar()
       }
