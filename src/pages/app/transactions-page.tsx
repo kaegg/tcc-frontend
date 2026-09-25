@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useCallback, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  SearchX,
   Sparkles,
   Trash2,
 } from "lucide-react"
@@ -16,6 +17,7 @@ import {
 import { PageHeader } from "@/components/app/page-header"
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
 import { DeleteTransactionDialog } from "@/components/transactions/delete-transaction-dialog"
+import { TransactionFiltersBar } from "@/components/transactions/transaction-filters-bar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -48,6 +50,15 @@ import { useTransaction, useTransactions } from "@/hooks/use-transactions"
 import { describeApiError } from "@/lib/api/errors"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format"
+import {
+  filtersFromParams,
+  hasFilters,
+  pageFromParams,
+  periodError,
+  withFilters,
+  withoutFilters,
+  type FilterKey,
+} from "@/lib/transaction-filters"
 import { cn } from "@/lib/utils"
 import { editTransactionPath, paths } from "@/routes/paths"
 
@@ -61,11 +72,41 @@ const money = (amount: string) => formatCurrency(Number(amount))
 const SKELETON_ROWS = 5
 
 export function TransactionsPage() {
-  const [page, setPage] = useState(1)
+  const [params, setParams] = useSearchParams()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<ApiTransaction | null>(null)
 
-  const query = useTransactions(page)
+  // Página e filtros vivem na URL. `replace` evita que cada tecla da busca
+  // vire uma entrada no histórico do navegador.
+  const page = pageFromParams(params)
+  const filters = filtersFromParams(params)
+  const filtered = hasFilters(filters)
+  const invalidPeriod = periodError(filters)
+
+  const setPage = (update: number | ((current: number) => number)) => {
+    const next = typeof update === "function" ? update(page) : update
+    setParams(
+      (current) => {
+        const copy = new URLSearchParams(current)
+        if (next > 1) copy.set("page", String(next))
+        else copy.delete("page")
+        return copy
+      },
+      { replace: true },
+    )
+  }
+
+  const changeFilters = useCallback(
+    (patch: Partial<Record<FilterKey, string | undefined>>) =>
+      setParams((current) => withFilters(current, patch), { replace: true }),
+    [setParams],
+  )
+
+  const clearFilters = () =>
+    setParams((current) => withoutFilters(current), { replace: true })
+
+  // Período invertido não vai ao servidor; a lista anterior fica na tela.
+  const query = useTransactions(page, filters, invalidPeriod === null)
   const meta = query.data?.meta
   const items = query.data?.data ?? []
 
@@ -90,8 +131,37 @@ export function TransactionsPage() {
       />
 
       <Card>
+        <CardContent className="px-6">
+          <TransactionFiltersBar
+            filters={filters}
+            periodError={invalidPeriod}
+            onChange={changeFilters}
+            onClear={clearFilters}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="px-0">
-          {loading ? (
+          {filtered && meta && !loading && !failed ? (
+            <p
+              aria-live="polite"
+              className="mb-2 px-6 text-sm text-muted-foreground"
+            >
+              {meta.total === 1
+                ? "1 lançamento encontrado"
+                : `${meta.total} lançamentos encontrados`}
+            </p>
+          ) : null}
+
+          {invalidPeriod && !query.data ? (
+            <Empty className="py-10">
+              <EmptyHeader>
+                <EmptyTitle>Ajuste o período</EmptyTitle>
+                <EmptyDescription>{invalidPeriod}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : loading ? (
             <div
               role="status"
               aria-live="polite"
@@ -124,6 +194,27 @@ export function TransactionsPage() {
                 </AlertDescription>
               </Alert>
             </div>
+          ) : items.length === 0 && page === 1 && filtered ? (
+            <Empty className="py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SearchX />
+                </EmptyMedia>
+                <EmptyTitle>Nenhum lançamento encontrado</EmptyTitle>
+                <EmptyDescription>
+                  Nenhum lançamento corresponde aos filtros escolhidos.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  className="h-9"
+                  onClick={clearFilters}
+                >
+                  Limpar filtros
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : items.length === 0 && page === 1 ? (
             <Empty className="py-10">
               <EmptyHeader>
