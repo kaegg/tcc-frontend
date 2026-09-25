@@ -36,12 +36,22 @@ export function createTransaction(
 
 export const TRANSACTIONS_PAGE_SIZE = 20
 
+/** Filtros da listagem; ausente não filtra. Datas civis `AAAA-MM-DD`. */
+export type TransactionFilters = {
+  from?: string
+  to?: string
+  type?: TransactionType
+  categoryId?: string
+  search?: string
+}
+
 export function fetchTransactions(
   page: number,
+  filters: TransactionFilters = {},
   signal?: AbortSignal,
 ): Promise<TransactionList> {
   return apiGet("/transactions", transactionListSchema, {
-    query: { page, pageSize: TRANSACTIONS_PAGE_SIZE },
+    query: { ...filters, page, pageSize: TRANSACTIONS_PAGE_SIZE },
     signal,
   })
 }

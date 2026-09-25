@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -8,6 +14,17 @@ import { TransactionsPage } from "@/pages/app/transactions-page"
 
 const ID_1 = "0199a1b2-c3d4-7000-8000-0000000000f1"
 const ID_2 = "0199a1b2-c3d4-7000-8000-0000000000f2"
+const ALIMENTACAO = "0199a1b2-c3d4-7000-8000-00000000c001"
+const TRANSPORTE = "0199a1b2-c3d4-7000-8000-00000000c002"
+const SALARIO = "0199a1b2-c3d4-7000-8000-00000000c101"
+
+const CATEGORIAS = {
+  data: [
+    { id: ALIMENTACAO, name: "Alimentação", type: "despesa" },
+    { id: TRANSPORTE, name: "Transporte", type: "despesa" },
+    { id: SALARIO, name: "Salário", type: "receita" },
+  ],
+}
 
 function item(id: string, extra: Record<string, unknown> = {}) {
   return {
@@ -47,10 +64,17 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 type Resposta = { status: number; body: unknown }
 
-/** Roteia por caminho e consulta: a página faz a listagem e, ao abrir, o detalhe. */
+/**
+ * Roteia por caminho e consulta: a página faz a listagem e, ao abrir, o
+ * detalhe. As categorias, que alimentam o filtro, respondem sempre a lista fixa.
+ */
 function rotas(tabela: (url: URL, method: string) => Resposta) {
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-    const { status, body } = tabela(new URL(url), init?.method ?? "GET")
+    const alvo = new URL(url)
+    const { status, body } =
+      alvo.pathname === "/api/categories"
+        ? { status: 200, body: CATEGORIAS }
+        : tabela(alvo, init?.method ?? "GET")
 
     return Promise.resolve(
       status === 204
@@ -63,19 +87,25 @@ function rotas(tabela: (url: URL, method: string) => Resposta) {
   })
 }
 
+/** URLs das consultas à listagem, na ordem em que foram feitas. */
+const listagens = () =>
+  fetchMock.mock.calls
+    .map((c) => new URL(String(c[0])))
+    .filter((url) => url.pathname === "/api/transactions")
+
 const chamadasDe = (method: string) =>
   fetchMock.mock.calls.filter(
     (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === method,
   )
 
-function renderizar(): void {
+function renderizar(url = "/lancamentos"): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
 
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[url]}>
         <TransactionsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -133,8 +163,7 @@ describe("TransactionsPage", () => {
 
     await screen.findByText("Almoço no campus")
 
-    const url = new URL(String(fetchMock.mock.calls[0][0]))
-    expect(url.pathname).toBe("/api/transactions")
+    const [url] = listagens()
     expect(url.searchParams.get("page")).toBe("1")
     expect(url.searchParams.get("pageSize")).toBe("20")
   })
@@ -353,6 +382,204 @@ describe("TransactionsPage", () => {
 
       expect(await within(dialogo).findByRole("alert")).toBeInTheDocument()
       expect(screen.getByRole("alertdialog")).toBeInTheDocument()
+    })
+  })
+
+  describe("filtros", () => {
+    /** Servidor de mentira que aplica tipo e busca, para a tela reagir ao resultado. */
+    function servidorComFiltro() {
+      const todos = [
+        item(ID_1, { description: "Mercado do mês" }),
+        item(ID_2, {
+          type: "receita",
+          description: "Salário de setembro",
+          categoryId: SALARIO,
+          categoryName: "Salário",
+        }),
+      ]
+      rotas((url) => {
+        const type = url.searchParams.get("type")
+        const search = url.searchParams.get("search")?.toLowerCase()
+        const data = todos.filter(
+          (t) =>
+            (!type || t.type === type) &&
+            (!search || t.description.toLowerCase().includes(search)),
+        )
+        return { status: 200, body: pagina(data) }
+      })
+    }
+
+    it("busca pela descrição só depois de o usuário parar de digitar", async () => {
+      servidorComFiltro()
+      const user = userEvent.setup()
+      renderizar()
+
+      await screen.findByText("Salário de setembro")
+      await user.type(screen.getByLabelText("Descrição"), "merc")
+
+      await waitFor(() =>
+        expect(
+          screen.queryByText("Salário de setembro"),
+        ).not.toBeInTheDocument(),
+      )
+      expect(screen.getByText("Mercado do mês")).toBeInTheDocument()
+      expect(screen.getByText("1 lançamento encontrado")).toBeInTheDocument()
+
+      const buscas = listagens()
+        .map((url) => url.searchParams.get("search"))
+        .filter(Boolean)
+      expect(buscas).toEqual(["merc"])
+    })
+
+    it("continuar digitando depois do envio não perde o que foi escrito", async () => {
+      servidorComFiltro()
+      const user = userEvent.setup()
+      renderizar()
+
+      await screen.findByText("Salário de setembro")
+      const campo = screen.getByLabelText("Descrição")
+      await user.type(campo, "merc")
+      await waitFor(() =>
+        expect(listagens().at(-1)?.searchParams.get("search")).toBe("merc"),
+      )
+      await user.type(campo, "ado")
+
+      expect(campo).toHaveValue("mercado")
+      await waitFor(() =>
+        expect(listagens().at(-1)?.searchParams.get("search")).toBe("mercado"),
+      )
+      expect(campo).toHaveValue("mercado")
+    })
+
+    it("filtra por tipo e oferece só as categorias daquele tipo", async () => {
+      servidorComFiltro()
+      const user = userEvent.setup()
+      renderizar()
+
+      await screen.findByText("Mercado do mês")
+      await user.click(screen.getByRole("combobox", { name: "Tipo" }))
+      await user.click(await screen.findByRole("option", { name: "Receitas" }))
+
+      await waitFor(() =>
+        expect(screen.queryByText("Mercado do mês")).not.toBeInTheDocument(),
+      )
+      expect(listagens().at(-1)?.searchParams.get("type")).toBe("receita")
+
+      await user.click(screen.getByRole("combobox", { name: "Categoria" }))
+      const opcoes = (await screen.findAllByRole("option")).map(
+        (o) => o.textContent,
+      )
+      expect(opcoes).toEqual(["Todas as categorias", "Salário"])
+    })
+
+    it("aplica os filtros combinados vindos da URL numa única consulta", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
+      renderizar(
+        `/lancamentos?from=2026-08-01&to=2026-08-31&type=despesa&categoryId=${ALIMENTACAO}&search=almo`,
+      )
+
+      await screen.findByText("Almoço no campus")
+
+      const params = Object.fromEntries(listagens()[0].searchParams)
+      expect(params).toMatchObject({
+        from: "2026-08-01",
+        to: "2026-08-31",
+        type: "despesa",
+        categoryId: ALIMENTACAO,
+        search: "almo",
+        page: "1",
+      })
+      expect(screen.getByLabelText("De")).toHaveValue("2026-08-01")
+      expect(screen.getByLabelText("Até")).toHaveValue("2026-08-31")
+      expect(screen.getByLabelText("Descrição")).toHaveValue("almo")
+      await waitFor(() =>
+        expect(
+          screen.getByRole("combobox", { name: "Categoria" }),
+        ).toHaveTextContent("Alimentação"),
+      )
+    })
+
+    it("não envia filtro inválido vindo de um link editado à mão", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
+      renderizar(
+        "/lancamentos?type=transferencia&from=ontem&categoryId=1'%20OR%20'1'='1&userId=outro",
+      )
+
+      await screen.findByText("Almoço no campus")
+
+      const enviados = [...listagens()[0].searchParams.keys()].sort()
+      expect(enviados).toEqual(["page", "pageSize"])
+    })
+
+    it("período invertido é avisado no campo e não vai ao servidor", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
+      renderizar("/lancamentos?from=2026-09-30")
+
+      await screen.findByText("Almoço no campus")
+      const antes = listagens().length
+
+      fireEvent.change(screen.getByLabelText("Até"), {
+        target: { value: "2026-09-01" },
+      })
+
+      expect(
+        await screen.findByText(
+          "A data final deve ser igual ou posterior à inicial.",
+        ),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText("Até")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      )
+      expect(listagens()).toHaveLength(antes)
+    })
+
+    it("resultado vazio com filtros diz isso e permite limpar", async () => {
+      rotas((url) => ({
+        status: 200,
+        body: pagina(url.searchParams.has("search") ? [] : [item(ID_1)]),
+      }))
+      const user = userEvent.setup()
+      renderizar("/lancamentos?search=inexistente&type=despesa")
+
+      expect(
+        await screen.findByText("Nenhum lançamento encontrado"),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByText("Nenhum lançamento ainda"),
+      ).not.toBeInTheDocument()
+
+      const [limpar] = screen.getAllByRole("button", {
+        name: /Limpar filtros/,
+      })
+      await user.click(limpar)
+
+      expect(await screen.findByText("Almoço no campus")).toBeInTheDocument()
+      expect(screen.getByLabelText("Descrição")).toHaveValue("")
+      const ultima = listagens().at(-1)!
+      expect(ultima.searchParams.has("search")).toBe(false)
+      expect(ultima.searchParams.has("type")).toBe(false)
+      expect(
+        screen.queryByRole("button", { name: /Limpar filtros/ }),
+      ).not.toBeInTheDocument()
+    })
+
+    it("trocar um filtro volta para a primeira página", async () => {
+      rotas((url) => ({
+        status: 200,
+        body: pagina([item(ID_1)], Number(url.searchParams.get("page")), 3, 41),
+      }))
+      renderizar("/lancamentos?page=3")
+
+      await screen.findByText(/Página 3 de 3/)
+      fireEvent.change(screen.getByLabelText("De"), {
+        target: { value: "2026-01-01" },
+      })
+
+      await waitFor(() =>
+        expect(listagens().at(-1)?.searchParams.get("page")).toBe("1"),
+      )
+      expect(listagens().at(-1)?.searchParams.get("from")).toBe("2026-01-01")
     })
   })
 })
