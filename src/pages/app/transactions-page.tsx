@@ -1,18 +1,19 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
   Eye,
   Inbox,
-  Pencil,
   Plus,
-  Search,
+  RefreshCw,
   Sparkles,
-  Trash2,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { PageHeader } from "@/components/app/page-header"
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -24,16 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -41,14 +32,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -57,53 +41,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { categories, categoryName, transactions } from "@/lib/demo-data"
+import { useTransaction, useTransactions } from "@/hooks/use-transactions"
+import { describeApiError } from "@/lib/api/errors"
+import type { ApiTransaction } from "@/lib/api/schemas"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format"
-import { sortByDateDesc } from "@/lib/finance"
 import { cn } from "@/lib/utils"
-import type { Transaction } from "@/lib/types"
 import { paths } from "@/routes/paths"
 
-const ALL = "todos"
+/**
+ * O valor chega como texto decimal e só vira `number` aqui, na exibição:
+ * é formatação, não aritmética, e o limite do banco (dez dígitos inteiros)
+ * cabe com folga na precisão do `number`.
+ */
+const money = (amount: string) => formatCurrency(Number(amount))
+
+const SKELETON_ROWS = 5
 
 export function TransactionsPage() {
-  const [search, setSearch] = useState("")
-  const [type, setType] = useState(ALL)
-  const [category, setCategory] = useState(ALL)
-  const [period, setPeriod] = useState(ALL)
-  const [details, setDetails] = useState<Transaction | null>(null)
-  const [toDelete, setToDelete] = useState<Transaction | null>(null)
+  const [page, setPage] = useState(1)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
+  const query = useTransactions(page)
+  const meta = query.data?.meta
+  const items = query.data?.data ?? []
 
-    return sortByDateDesc(transactions).filter((item) => {
-      if (type !== ALL && item.type !== type) return false
-      if (category !== ALL && item.categoryId !== category) return false
-      if (period !== ALL && !item.date.startsWith(period)) return false
-      if (term && !item.description.toLowerCase().includes(term)) return false
-      return true
-    })
-  }, [search, type, category, period])
-
-  const hasFilters =
-    search !== "" || type !== ALL || category !== ALL || period !== ALL
-
-  function clearFilters() {
-    setSearch("")
-    setType(ALL)
-    setCategory(ALL)
-    setPeriod(ALL)
-  }
-
-  function confirmDelete() {
-    const target = toDelete
-    setToDelete(null)
-    if (!target) return
-    toast.success("Lançamento excluído", {
-      description: `"${target.description}" foi removido. A exclusão real será feita pelo backend.`,
-    })
-  }
+  // Só a primeira carga mostra esqueleto; a troca de página mantém a atual.
+  const loading = query.isPending
+  const failed = query.isError && !query.data
 
   return (
     <div className="space-y-6">
@@ -122,109 +86,78 @@ export function TransactionsPage() {
       />
 
       <Card>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar na descrição"
-                aria-label="Buscar lançamentos pela descrição"
-                className="h-9 pl-8"
-              />
-            </div>
-
-            <Select value={type} onValueChange={(v) => setType(v ?? ALL)}>
-              <SelectTrigger className="h-9" aria-label="Filtrar por tipo">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Todos os tipos</SelectItem>
-                <SelectItem value="receita">Receitas</SelectItem>
-                <SelectItem value="despesa">Despesas</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={category}
-              onValueChange={(v) => setCategory(v ?? ALL)}
-            >
-              <SelectTrigger className="h-9" aria-label="Filtrar por categoria">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Todas as categorias</SelectItem>
-                {categories.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={period} onValueChange={(v) => setPeriod(v ?? ALL)}>
-              <SelectTrigger className="h-9" aria-label="Filtrar por período">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Todo o período</SelectItem>
-                <SelectItem value="2026-08">Agosto de 2026</SelectItem>
-                <SelectItem value="2026-07">Julho de 2026</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {hasFilters && (
-            <div className="mt-3 flex items-center gap-3">
-              <p aria-live="polite" className="text-sm text-muted-foreground">
-                {filtered.length}{" "}
-                {filtered.length === 1
-                  ? "lançamento encontrado"
-                  : "lançamentos encontrados"}
-              </p>
-              <Button variant="ghost" className="h-8" onClick={clearFilters}>
-                Limpar filtros
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardContent className="px-0">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              aria-label="Carregando lançamentos"
+              className="space-y-3 px-6 py-2"
+            >
+              {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+                <Skeleton key={index} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : failed ? (
+            <div className="px-6">
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertTitle>
+                  Não foi possível carregar os lançamentos
+                </AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>{describeApiError(query.error)}</p>
+                  <Button
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => void query.refetch()}
+                    disabled={query.isFetching}
+                  >
+                    <RefreshCw />
+                    {query.isFetching ? "Carregando..." : "Tentar novamente"}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : items.length === 0 && page === 1 ? (
             <Empty className="py-10">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <Inbox />
                 </EmptyMedia>
-                <EmptyTitle>Nenhum lançamento encontrado</EmptyTitle>
+                <EmptyTitle>Nenhum lançamento ainda</EmptyTitle>
                 <EmptyDescription>
-                  Ajuste os filtros ou registre um novo lançamento pelo
-                  formulário ou pelo assistente.
+                  Registre sua primeira receita ou despesa pelo formulário ou
+                  pelo assistente.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-9"
-                    onClick={clearFilters}
-                  >
-                    Limpar filtros
-                  </Button>
-                  <Link
-                    to={paths.app.newTransaction}
-                    className={cn(buttonVariants(), "h-9")}
-                  >
-                    <Plus />
-                    Novo lançamento
-                  </Link>
-                </div>
+                <Link
+                  to={paths.app.newTransaction}
+                  className={cn(buttonVariants(), "h-9")}
+                >
+                  <Plus />
+                  Novo lançamento
+                </Link>
+              </EmptyContent>
+            </Empty>
+          ) : items.length === 0 ? (
+            <Empty className="py-10">
+              <EmptyHeader>
+                <EmptyTitle>Esta página não tem lançamentos</EmptyTitle>
+                <EmptyDescription>
+                  Os lançamentos podem ter mudado desde a última consulta.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => setPage(1)}
+                >
+                  Voltar à primeira página
+                </Button>
               </EmptyContent>
             </Empty>
           ) : (
@@ -240,7 +173,7 @@ export function TransactionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((item) => (
+                {items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="pl-6">
                       <span className="block max-w-64 truncate">
@@ -257,7 +190,7 @@ export function TransactionsPage() {
                       <TransactionTypeBadge type={item.type} />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {categoryName(item.categoryId)}
+                      {item.categoryName}
                     </TableCell>
                     <TableCell className="financial-value text-muted-foreground">
                       {formatDate(item.date)}
@@ -268,8 +201,7 @@ export function TransactionsPage() {
                         item.type === "receita" && "text-success",
                       )}
                     >
-                      {item.type === "receita" ? "+" : "−"}{" "}
-                      {formatCurrency(item.amount)}
+                      {item.type === "receita" ? "+" : "−"} {money(item.amount)}
                     </TableCell>
                     <TableCell className="pr-6">
                       <div className="flex justify-end gap-1">
@@ -277,26 +209,9 @@ export function TransactionsPage() {
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`Visualizar ${item.description}`}
-                          onClick={() => setDetails(item)}
+                          onClick={() => setSelectedId(item.id)}
                         >
                           <Eye />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Editar ${item.description}`}
-                          render={<Link to={paths.app.newTransaction} />}
-                          nativeButton={false}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Excluir ${item.description}`}
-                          onClick={() => setToDelete(item)}
-                        >
-                          <Trash2 />
                         </Button>
                       </div>
                     </TableCell>
@@ -305,85 +220,133 @@ export function TransactionsPage() {
               </TableBody>
             </Table>
           )}
+
+          {meta && meta.totalPages > 1 ? (
+            <nav
+              aria-label="Paginação dos lançamentos"
+              className="mt-4 flex items-center justify-between gap-3 px-6"
+            >
+              <p aria-live="polite" className="text-sm text-muted-foreground">
+                Página {meta.page} de {meta.totalPages} · {meta.total}{" "}
+                lançamentos
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => setPage((current) => current - 1)}
+                  disabled={page <= 1 || query.isFetching}
+                >
+                  <ChevronLeft />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => setPage((current) => current + 1)}
+                  disabled={page >= meta.totalPages || query.isFetching}
+                >
+                  Próxima
+                  <ChevronRight />
+                </Button>
+              </div>
+            </nav>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Dialog
-        open={details !== null}
-        onOpenChange={(open) => !open && setDetails(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Detalhes do lançamento</DialogTitle>
-            <DialogDescription>
-              Dados completos do registro selecionado.
-            </DialogDescription>
-          </DialogHeader>
-
-          {details && (
-            <dl className="grid grid-cols-2 gap-4 text-sm">
-              <Detail label="Tipo">
-                <TransactionTypeBadge type={details.type} />
-              </Detail>
-              <Detail label="Valor">
-                <span className="financial-value">
-                  {formatCurrency(details.amount)}
-                </span>
-              </Detail>
-              <Detail label="Categoria">
-                {categoryName(details.categoryId)}
-              </Detail>
-              <Detail label="Data">
-                <span className="financial-value">
-                  {formatDate(details.date)}
-                </span>
-              </Detail>
-              <Detail label="Descrição" full>
-                {details.description}
-              </Detail>
-              <Detail label="Registrado em">
-                <span className="financial-value">
-                  {formatDateTime(details.createdAt)}
-                </span>
-              </Detail>
-              <Detail label="Origem">
-                <Badge variant="outline">
-                  {details.source === "assistente"
-                    ? "Assistente IA"
-                    : "Formulário"}
-                </Badge>
-              </Detail>
-            </dl>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={toDelete !== null}
-        onOpenChange={(open) => !open && setToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir este lançamento?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {toDelete && (
-                <>
-                  “{toDelete.description}”, no valor de{" "}
-                  {formatCurrency(toDelete.amount)}, deixará de aparecer nas
-                  listagens e nos relatórios. Esta ação não pode ser desfeita.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TransactionDetails id={selectedId} onClose={() => setSelectedId(null)} />
     </div>
+  )
+}
+
+function TransactionDetails({
+  id,
+  onClose,
+}: {
+  id: string | null
+  onClose: () => void
+}) {
+  const query = useTransaction(id)
+
+  return (
+    <Dialog open={id !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Detalhes do lançamento</DialogTitle>
+          <DialogDescription>
+            Dados completos do registro selecionado.
+          </DialogDescription>
+        </DialogHeader>
+
+        {query.isPending ? (
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Carregando detalhes"
+            className="space-y-3"
+          >
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-5 w-1/2" />
+          </div>
+        ) : query.isError ? (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Não foi possível abrir o lançamento</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>{describeApiError(query.error)}</p>
+              <Button
+                variant="outline"
+                className="h-8"
+                onClick={() => void query.refetch()}
+                disabled={query.isFetching}
+              >
+                <RefreshCw />
+                Tentar novamente
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <DetailFields item={query.data} />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DetailFields({ item }: { item: ApiTransaction }) {
+  return (
+    <dl className="grid grid-cols-2 gap-4 text-sm">
+      <Detail label="Tipo">
+        <TransactionTypeBadge type={item.type} />
+      </Detail>
+      <Detail label="Valor">
+        <span className="financial-value">{money(item.amount)}</span>
+      </Detail>
+      <Detail label="Categoria">{item.categoryName}</Detail>
+      <Detail label="Data">
+        <span className="financial-value">{formatDate(item.date)}</span>
+      </Detail>
+      <Detail label="Descrição" full>
+        {item.description}
+      </Detail>
+      <Detail label="Registrado em">
+        <span className="financial-value">
+          {formatDateTime(item.createdAt)}
+        </span>
+      </Detail>
+      <Detail label="Atualizado em">
+        <span className="financial-value">
+          {formatDateTime(item.updatedAt)}
+        </span>
+      </Detail>
+      <Detail label="Origem">
+        <Badge variant="outline">
+          {item.source === "assistente" ? "Assistente IA" : "Formulário"}
+        </Badge>
+      </Detail>
+    </dl>
   )
 }
 

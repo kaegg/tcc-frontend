@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { CircleAlert, Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -36,6 +36,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/use-categories"
 import { describeApiError, fieldErrorsOf } from "@/lib/api/errors"
+import { queryKeys } from "@/lib/api/query-keys"
 import { amountToApi, createTransaction } from "@/lib/api/transactions"
 import { todayIso } from "@/lib/format"
 import type { Category } from "@/lib/api/schemas"
@@ -94,6 +95,7 @@ const ehCampo = (campo: string): campo is (typeof CAMPOS)[number] =>
 
 export function NewTransactionPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [type, setType] = useState<"receita" | "despesa">("despesa")
 
   const {
@@ -157,7 +159,11 @@ export function NewTransactionPage() {
         date: values.date,
         description: values.description,
       }),
-    onSuccess: (criado) => {
+    onSuccess: async (criado) => {
+      // A lista precisa refletir o lançamento novo ao chegar em /lancamentos.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.transactionsAll,
+      })
       toast.success("Lançamento salvo", { description: criado.description })
       navigate(paths.app.transactions)
     },

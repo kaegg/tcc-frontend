@@ -1,6 +1,8 @@
-import { apiPost } from "@/lib/api/client"
+import { apiGet, apiPost } from "@/lib/api/client"
 import {
+  transactionListSchema,
   transactionSchema,
+  type TransactionList,
   type ApiTransaction,
   type TransactionType,
 } from "@/lib/api/schemas"
@@ -28,4 +30,26 @@ export function createTransaction(
   signal?: AbortSignal,
 ): Promise<ApiTransaction> {
   return apiPost("/transactions", input, transactionSchema, { signal })
+}
+
+export const TRANSACTIONS_PAGE_SIZE = 20
+
+export function fetchTransactions(
+  page: number,
+  signal?: AbortSignal,
+): Promise<TransactionList> {
+  return apiGet("/transactions", transactionListSchema, {
+    query: { page, pageSize: TRANSACTIONS_PAGE_SIZE },
+    signal,
+  })
+}
+
+/** O id é opaco: vai na URL codificado, nunca interpretado. */
+export function fetchTransaction(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ApiTransaction> {
+  return apiGet(`/transactions/${encodeURIComponent(id)}`, transactionSchema, {
+    signal,
+  })
 }

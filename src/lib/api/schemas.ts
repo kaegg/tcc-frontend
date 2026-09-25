@@ -84,9 +84,21 @@ export const transactionSchema = z.object({
   date: z.string(),
   description: z.string(),
   categoryId: z.string(),
+  categoryName: z.string(),
   source: z.enum(["formulario", "assistente"]),
   createdAt: z.string(),
   updatedAt: z.string(),
+})
+
+/** Coleção paginada: `data` mais `meta` (ADR 0002, convenção 5). */
+export const transactionListSchema = z.object({
+  data: z.array(transactionSchema),
+  meta: z.object({
+    page: z.number(),
+    pageSize: z.number(),
+    total: z.number(),
+    totalPages: z.number(),
+  }),
 })
 
 /**
@@ -102,6 +114,7 @@ export const authSchema = z.object({
 
 export type TransactionType = z.infer<typeof transactionTypeSchema>
 export type ApiTransaction = z.infer<typeof transactionSchema>
+export type TransactionList = z.infer<typeof transactionListSchema>
 export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>
