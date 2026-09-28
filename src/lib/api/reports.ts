@@ -1,19 +1,20 @@
 import { apiGet } from "@/lib/api/client"
 import {
   monthlySummarySchema,
-  periodSummarySchema,
+  reportOverviewSchema,
   type MonthlySummary,
-  type PeriodSummary,
+  type ReportOverview,
 } from "@/lib/api/schemas"
 
 /** Período com as duas pontas inclusivas, em datas civis `AAAA-MM-DD`. */
 export type ReportPeriod = { from: string; to: string }
 
-export function fetchPeriodSummary(
+/** Totais, distribuição e série mensal do período, numa só resposta. */
+export function fetchReportOverview(
   period: ReportPeriod,
   signal?: AbortSignal,
-): Promise<PeriodSummary> {
-  return apiGet("/reports/summary", periodSummarySchema, {
+): Promise<ReportOverview> {
+  return apiGet("/reports/overview", reportOverviewSchema, {
     query: { from: period.from, to: period.to },
     signal,
   })

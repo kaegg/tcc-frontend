@@ -2,7 +2,7 @@ import { Link, useSearchParams } from "react-router-dom"
 import {
   CircleAlert,
   List,
-  ReceiptText,
+  PiggyBank,
   RefreshCw,
   TrendingDown,
   TrendingUp,
@@ -11,11 +11,20 @@ import {
 
 import { PageHeader } from "@/components/app/page-header"
 import { StatCard, StatCardSkeleton } from "@/components/app/stat-card"
+import {
+  BalanceChart,
+  IncomeExpenseChart,
+} from "@/components/reports/report-charts"
+import {
+  CategoryDistribution,
+  MonthlyTable,
+} from "@/components/reports/report-details"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -23,10 +32,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { usePeriodSummary } from "@/hooks/use-reports"
+import { useReportOverview } from "@/hooks/use-reports"
 import { describeApiError } from "@/lib/api/errors"
 import type { ReportPeriod } from "@/lib/api/reports"
-import type { PeriodSummary } from "@/lib/api/schemas"
+import type { ReportOverview } from "@/lib/api/schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import {
   matchingPreset,
@@ -60,7 +69,9 @@ export function ReportsPage() {
   const invalidPeriod = reportPeriodError(period)
   const preset = matchingPreset(period)
 
-  const query = usePeriodSummary(period, invalidPeriod === null)
+  // Uma consulta alimenta cartões, gráficos e tabela: trocar o período muda
+  // todos juntos, e nenhum deles pode mostrar um recorte diferente.
+  const query = useReportOverview(period, invalidPeriod === null)
 
   function changePeriod(next: ReportPeriod) {
     setParams(
@@ -160,13 +171,19 @@ export function ReportsPage() {
 
       {invalidPeriod && !query.data ? null : query.isPending ? (
         <section
-          aria-label="Carregando totais do período"
+          aria-label="Carregando relatório do período"
           aria-busy="true"
-          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          className="space-y-4"
         >
-          {Array.from({ length: 4 }, (_, i) => (
-            <StatCardSkeleton key={i} />
-          ))}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <StatCardSkeleton key={i} />
+            ))}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Skeleton className="h-80 w-full" />
+            <Skeleton className="h-80 w-full" />
+          </div>
         </section>
       ) : query.isError && !query.data ? (
         <Alert variant="destructive">
@@ -186,21 +203,41 @@ export function ReportsPage() {
           </AlertDescription>
         </Alert>
       ) : query.data ? (
-        <Summary data={query.data} />
+        <Overview
+          data={query.data}
+          updating={query.isFetching && query.isPlaceholderData}
+        />
       ) : null}
     </div>
   )
 }
 
-function Summary({ data }: { data: PeriodSummary }) {
+function Overview({
+  data,
+  updating,
+}: {
+  data: ReportOverview
+  updating: boolean
+}) {
   const balance = Number(data.balance)
   const periodQuery = new URLSearchParams({ from: data.from, to: data.to })
 
   return (
-    <section aria-labelledby="totais-titulo" className="space-y-4">
+    <section
+      aria-labelledby="relatorio-titulo"
+      aria-busy={updating}
+      // Enquanto o novo período carrega, o anterior fica visível e esmaecido,
+      // para não parecer que os números já são do período escolhido.
+      className={cn("space-y-4 transition-opacity", updating && "opacity-60")}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="totais-titulo" className="text-base font-medium">
+        <h2 id="relatorio-titulo" className="text-base font-medium">
           De {formatDate(data.from)} a {formatDate(data.to)}
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            {data.transactionCount === 1
+              ? "1 lançamento"
+              : `${data.transactionCount} lançamentos`}
+          </span>
         </h2>
         <Link
           to={`${paths.app.transactions}?${periodQuery.toString()}`}
@@ -212,16 +249,18 @@ function Summary({ data }: { data: PeriodSummary }) {
       </div>
 
       <div
+        role="group"
+        aria-label="Indicadores do período"
         aria-live="polite"
         className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
         <StatCard
-          label="Receitas"
+          label="Receitas totais"
           value={money(data.income)}
           icon={TrendingUp}
         />
         <StatCard
-          label="Despesas"
+          label="Despesas totais"
           value={money(data.expense)}
           icon={TrendingDown}
         />
@@ -232,9 +271,13 @@ function Summary({ data }: { data: PeriodSummary }) {
           icon={Wallet}
         />
         <StatCard
-          label="Lançamentos"
-          value={String(data.transactionCount)}
-          icon={ReceiptText}
+          label="Economia"
+          value={
+            data.savingsRate === null
+              ? "Sem receitas"
+              : `${data.savingsRate.replace(".", ",")}%`
+          }
+          icon={PiggyBank}
         />
       </div>
 
@@ -243,6 +286,23 @@ function Summary({ data }: { data: PeriodSummary }) {
           Nenhum lançamento neste período.
         </p>
       ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <IncomeExpenseChart
+          months={data.months}
+          totals={{ income: data.income, expense: data.expense }}
+        />
+        <BalanceChart months={data.months} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <CategoryDistribution data={data} />
+        </div>
+        <div className="lg:col-span-3">
+          <MonthlyTable data={data} />
+        </div>
+      </div>
     </section>
   )
 }

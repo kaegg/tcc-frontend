@@ -14,8 +14,8 @@ export const queryKeys = {
   transaction: (id: string) => ["transactions", "detail", id] as const,
   /** Prefixo dos relatórios; toda escrita em lançamento o invalida. */
   reportsAll: ["reports"] as const,
-  periodSummary: (from: string, to: string) =>
-    ["reports", "summary", { from, to }] as const,
+  reportOverview: (from: string, to: string) =>
+    ["reports", "overview", { from, to }] as const,
   monthlySummary: (month: string) => ["reports", "monthly", { month }] as const,
   categories: (type?: TransactionType) =>
     type ? (["categories", { type }] as const) : (["categories"] as const),

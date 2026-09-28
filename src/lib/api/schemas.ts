@@ -111,6 +111,11 @@ export const periodSummarySchema = z.object({
   income: moneySchema,
   expense: moneySchema,
   balance: moneySchema,
+  /** Saldo sobre receitas, em %; nulo quando não há receita no período. */
+  savingsRate: z
+    .string()
+    .regex(/^-?\d+\.\d{2}$/)
+    .nullable(),
   transactionCount: z.number().int().nonnegative(),
 })
 
@@ -130,6 +135,27 @@ export const monthlySummarySchema = periodSummarySchema.extend({
   expenseByCategory: z.array(categoryTotalSchema),
 })
 
+/** Um mês da série do relatório, recortado pelas pontas do período. */
+export const monthTotalsSchema = z.object({
+  month: z.string(),
+  from: z.string(),
+  to: z.string(),
+  income: moneySchema,
+  expense: moneySchema,
+  balance: moneySchema,
+  transactionCount: z.number().int().nonnegative(),
+})
+
+/**
+ * Tudo o que a tela de relatórios mostra (TCC-018). Cartões, gráficos e
+ * tabela leem desta mesma resposta.
+ */
+export const reportOverviewSchema = periodSummarySchema.extend({
+  incomeByCategory: z.array(categoryTotalSchema),
+  expenseByCategory: z.array(categoryTotalSchema),
+  months: z.array(monthTotalsSchema),
+})
+
 /**
  * Resposta de login e de refresh. O refresh token não aparece aqui de
  * propósito: ele viaja só em cookie httpOnly, que o JavaScript não lê.
@@ -147,6 +173,8 @@ export type TransactionList = z.infer<typeof transactionListSchema>
 export type PeriodSummary = z.infer<typeof periodSummarySchema>
 export type CategoryTotal = z.infer<typeof categoryTotalSchema>
 export type MonthlySummary = z.infer<typeof monthlySummarySchema>
+export type MonthTotals = z.infer<typeof monthTotalsSchema>
+export type ReportOverview = z.infer<typeof reportOverviewSchema>
 export type AuthResponse = z.infer<typeof authSchema>
 export type Category = z.infer<typeof categorySchema>
 export type CategoryList = z.infer<typeof categoryListSchema>

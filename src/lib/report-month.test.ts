@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   currentMonth,
   formatMonth,
+  formatMonthShort,
   isValidMonth,
   monthFromParams,
   monthPeriod,
@@ -63,5 +64,12 @@ describe("monthPeriod e formatMonth", () => {
 
   it("escreve o mês por extenso", () => {
     expect(formatMonth("2026-03")).toBe("março de 2026")
+  })
+})
+
+describe("formatMonthShort", () => {
+  it("abrevia para o eixo do gráfico", () => {
+    expect(formatMonthShort("2026-09")).toBe("set/26")
+    expect(formatMonthShort("2027-03")).toBe("mar/27")
   })
 })

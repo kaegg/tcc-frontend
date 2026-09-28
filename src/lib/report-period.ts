@@ -76,6 +76,21 @@ export function periodFromParams(
   return presetPeriod("este-mes", today)
 }
 
+/** Mesmo teto do backend (`/reports/overview`), para o erro aparecer no campo. */
+export const MAX_REPORT_MONTHS = 24
+export const PERIODO_LONGO = `O período deve ter no máximo ${MAX_REPORT_MONTHS} meses.`
+
+function monthSpan(from: string, to: string): number {
+  const [fy, fm] = from.split("-").map(Number)
+  const [ty, tm] = to.split("-").map(Number)
+
+  return (ty - fy) * 12 + (tm - fm) + 1
+}
+
 export function reportPeriodError(period: ReportPeriod): string | null {
-  return period.from > period.to ? PERIODO_INVERTIDO : null
+  if (period.from > period.to) return PERIODO_INVERTIDO
+  if (monthSpan(period.from, period.to) > MAX_REPORT_MONTHS) {
+    return PERIODO_LONGO
+  }
+  return null
 }
