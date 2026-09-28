@@ -84,7 +84,9 @@ export function MonthlyTable({ data }: { data: ReportOverview }) {
                 return (
                   <TableRow key={m.month}>
                     <TableCell className="pl-6">
-                      <span className="capitalize">{formatMonth(m.month)}</span>
+                      <span className="inline-block first-letter:uppercase">
+                        {formatMonth(m.month)}
+                      </span>
                       {partial ? (
                         <span className="block text-xs text-muted-foreground">
                           de {formatDate(m.from)} a {formatDate(m.to)}

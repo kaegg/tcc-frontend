@@ -39,7 +39,6 @@ export const router = createBrowserRouter([
           { path: paths.app.reports, element: <ReportsPage /> },
           { path: paths.app.assistant, element: <AssistantPage /> },
           { path: paths.app.profile, element: <ProfilePage /> },
-          { path: paths.app.settings, element: <ProfilePage /> },
         ],
       },
     ],

@@ -16,7 +16,6 @@ export const paths = {
     reports: "/relatorios",
     assistant: "/assistente",
     profile: "/perfil",
-    settings: "/configuracoes",
   },
 } as const
 
