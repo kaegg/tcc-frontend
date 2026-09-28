@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom"
-import { LogOut, Settings, User } from "lucide-react"
+import { LogOut, User } from "lucide-react"
 import { toast } from "sonner"
 
 import { ApiStatusBanner } from "@/components/app/api-status-banner"
@@ -84,10 +84,6 @@ export function AppLayout() {
                 <DropdownMenuItem render={<Link to={paths.app.profile} />}>
                   <User />
                   Perfil
-                </DropdownMenuItem>
-                <DropdownMenuItem render={<Link to={paths.app.settings} />}>
-                  <Settings />
-                  Configurações
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => void handleSignOut()}>
