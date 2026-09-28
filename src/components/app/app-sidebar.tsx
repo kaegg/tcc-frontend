@@ -4,7 +4,6 @@ import {
   ChartColumn,
   LayoutDashboard,
   LogOut,
-  Settings,
   Sparkles,
   User,
 } from "lucide-react"
@@ -32,10 +31,7 @@ const navigation = [
   { title: "Assistente IA", to: paths.app.assistant, icon: Sparkles },
 ]
 
-const account = [
-  { title: "Perfil", to: paths.app.profile, icon: User },
-  { title: "Configurações", to: paths.app.settings, icon: Settings },
-]
+const account = [{ title: "Perfil", to: paths.app.profile, icon: User }]
 
 export function AppSidebar() {
   const { pathname } = useLocation()
