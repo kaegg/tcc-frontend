@@ -22,6 +22,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useSignOut } from "@/hooks/use-sign-out"
 import { paths } from "@/routes/paths"
 
 const navigation = [
@@ -38,6 +39,7 @@ const account = [
 
 export function AppSidebar() {
   const { pathname } = useLocation()
+  const signOutAndLeave = useSignOut()
 
   const isActive = (to: string) =>
     pathname === to || pathname.startsWith(`${to}/`)
@@ -105,7 +107,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Sair"
-              render={<Link to={paths.public.login} />}
+              onClick={() => void signOutAndLeave()}
             >
               <LogOut />
               <span>Sair</span>

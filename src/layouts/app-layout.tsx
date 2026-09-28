@@ -1,19 +1,9 @@
-import { Link, Outlet, useNavigate } from "react-router-dom"
-import { LogOut, Settings, User } from "lucide-react"
-import { toast } from "sonner"
+import { Link, Outlet } from "react-router-dom"
 
 import { ApiStatusBanner } from "@/components/app/api-status-banner"
 import { AppSidebar } from "@/components/app/app-sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
@@ -21,7 +11,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuthenticatedUser } from "@/hooks/use-session"
-import { signOut } from "@/lib/api/auth-session"
+import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
 /**
@@ -30,20 +20,6 @@ import { paths } from "@/routes/paths"
  */
 export function AppLayout() {
   const user = useAuthenticatedUser()
-  const navigate = useNavigate()
-
-  async function handleSignOut() {
-    const confirmed = await signOut()
-
-    if (!confirmed) {
-      toast.warning("Não foi possível confirmar o encerramento no servidor", {
-        description:
-          "Você saiu deste navegador, mas a sessão pode continuar ativa. Tente sair novamente quando a conexão voltar.",
-      })
-    }
-
-    navigate(paths.public.login, { replace: true })
-  }
 
   return (
     <SidebarProvider>
@@ -55,47 +31,23 @@ export function AppLayout() {
           <Separator orientation="vertical" className="mr-1 h-5" />
 
           <div className="ml-auto">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    className="h-9 gap-2 pr-2.5 pl-1.5"
-                    aria-label="Abrir menu da conta"
-                  />
-                }
-              >
-                <Avatar className="size-6">
-                  <AvatarFallback className="text-[11px]">
-                    {user.initials}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="hidden text-sm sm:inline">{user.name}</span>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="font-normal">
-                  <span className="block text-sm font-medium">{user.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {user.email}
-                  </span>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link to={paths.app.profile} />}>
-                  <User />
-                  Perfil
-                </DropdownMenuItem>
-                <DropdownMenuItem render={<Link to={paths.app.settings} />}>
-                  <Settings />
-                  Configurações
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => void handleSignOut()}>
-                  <LogOut />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Link
+              to={paths.app.profile}
+              // Contém o nome visível (WCAG 2.5.3) e continua nomeado em tela
+              // estreita, onde o nome some da vista.
+              aria-label={`Perfil: ${user.name}`}
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "h-9 gap-2 pr-2.5 pl-1.5",
+              )}
+            >
+              <Avatar className="size-6" aria-hidden="true">
+                <AvatarFallback className="text-[11px]">
+                  {user.initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="hidden text-sm sm:inline">{user.name}</span>
+            </Link>
           </div>
         </header>
 
