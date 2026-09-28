@@ -71,3 +71,10 @@ export function monthPeriod(month: string): ReportPeriod {
     to: `${month}-${String(lastDay).padStart(2, "0")}`,
   }
 }
+
+/** "set/26", para eixos de gráfico, onde o espaço é curto. */
+export function formatMonthShort(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number)
+
+  return `${MONTH_NAMES[monthNumber - 1].slice(0, 3)}/${String(year).slice(2)}`
+}

@@ -9,7 +9,7 @@ describe("invalidateFinancialData", () => {
     const client = new QueryClient()
     const lista = queryKeys.transactions(1)
     const detalhe = queryKeys.transaction("abc")
-    const relatorio = queryKeys.periodSummary("2026-09-01", "2026-09-30")
+    const relatorio = queryKeys.reportOverview("2026-09-01", "2026-09-30")
     const categorias = queryKeys.categories()
 
     for (const key of [lista, detalhe, relatorio, categorias]) {

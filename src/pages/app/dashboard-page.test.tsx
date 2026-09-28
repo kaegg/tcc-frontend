@@ -18,6 +18,7 @@ function resumo(month: string, extra: Record<string, unknown> = {}) {
     income: "3000.00",
     expense: "1300.30",
     balance: "1699.70",
+    savingsRate: "56.66",
     transactionCount: 6,
     incomeByCategory: [
       {

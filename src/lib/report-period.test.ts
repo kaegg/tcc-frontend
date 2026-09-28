@@ -98,3 +98,14 @@ describe("reportPeriodError", () => {
     ).toBeNull()
   })
 })
+
+describe("reportPeriodError: extensão", () => {
+  it("aceita até 24 meses e recusa o 25º", () => {
+    expect(
+      reportPeriodError({ from: "2025-01-01", to: "2026-12-31" }),
+    ).toBeNull()
+    expect(reportPeriodError({ from: "2025-01-01", to: "2027-01-01" })).toBe(
+      "O período deve ter no máximo 24 meses.",
+    )
+  })
+})
