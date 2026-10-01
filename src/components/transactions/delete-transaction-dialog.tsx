@@ -20,6 +20,7 @@ import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { deleteTransaction } from "@/lib/api/transactions"
 import { formatCurrency, formatDate } from "@/lib/format"
+import { transactionLabel } from "@/lib/transaction-label"
 
 /**
  * Confirmação explícita antes de excluir (RF09, RN05). A requisição só parte
@@ -41,7 +42,9 @@ export function DeleteTransactionDialog({
     mutationFn: (alvo: ApiTransaction) => deleteTransaction(alvo.id),
     onSuccess: async (_, alvo) => {
       await invalidateFinancialData(queryClient)
-      toast.success("Lançamento excluído", { description: alvo.description })
+      toast.success("Lançamento excluído", {
+        description: transactionLabel(alvo),
+      })
       onDeleted?.(alvo)
       fechar()
     },
@@ -83,7 +86,11 @@ export function DeleteTransactionDialog({
         {item ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg bg-muted/50 p-3 text-sm">
             <dt className="text-muted-foreground">Descrição</dt>
-            <dd className="break-words">{item.description}</dd>
+            <dd className="break-words">
+              {item.description ?? (
+                <span className="text-muted-foreground">Sem descrição</span>
+              )}
+            </dd>
             <dt className="text-muted-foreground">Valor</dt>
             <dd className="financial-value flex items-center gap-2">
               {formatCurrency(Number(item.amount))}

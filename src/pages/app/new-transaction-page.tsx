@@ -18,6 +18,7 @@ import { invalidateFinancialData } from "@/lib/api/invalidate"
 import { createTransaction } from "@/lib/api/transactions"
 import { todayIso } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { transactionLabel } from "@/lib/transaction-label"
 import { paths } from "@/routes/paths"
 
 export function NewTransactionPage() {
@@ -41,7 +42,7 @@ export function NewTransactionPage() {
         <Card className="lg:col-span-2 [--card-spacing:--spacing(6)]">
           <CardHeader>
             <CardTitle>Dados do lançamento</CardTitle>
-            <CardDescription>Todos os campos são obrigatórios.</CardDescription>
+            <CardDescription>A descrição é opcional.</CardDescription>
           </CardHeader>
           <CardContent>
             <TransactionForm
@@ -55,7 +56,7 @@ export function NewTransactionPage() {
               onSaved={async (criado) => {
                 await invalidateFinancialData(queryClient)
                 toast.success("Lançamento salvo", {
-                  description: criado.description,
+                  description: transactionLabel(criado),
                 })
                 navigate(paths.app.transactions)
               }}

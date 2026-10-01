@@ -21,6 +21,8 @@ import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { ApiTransaction } from "@/lib/api/schemas"
 import { updateTransaction } from "@/lib/api/transactions"
 import { cn } from "@/lib/utils"
+import { apiToCents } from "@/lib/money-input"
+import { transactionLabel } from "@/lib/transaction-label"
 import { paths } from "@/routes/paths"
 
 export function EditTransactionPage() {
@@ -37,7 +39,7 @@ export function EditTransactionPage() {
       <Card className="max-w-2xl [--card-spacing:--spacing(6)]">
         <CardHeader>
           <CardTitle>Dados do lançamento</CardTitle>
-          <CardDescription>Todos os campos são obrigatórios.</CardDescription>
+          <CardDescription>A descrição é opcional.</CardDescription>
         </CardHeader>
         <CardContent>
           {query.isPending ? (
@@ -75,16 +77,16 @@ function EditForm({ item }: { item: ApiTransaction }) {
     <TransactionForm
       defaultValues={{
         type: item.type,
-        amount: Number(item.amount),
+        amountCents: apiToCents(item.amount),
         categoryId: item.categoryId,
         date: item.date,
-        description: item.description,
+        description: item.description ?? "",
       }}
       save={(input) => updateTransaction(item.id, input)}
       onSaved={async (salvo) => {
         await invalidateFinancialData(queryClient)
         toast.success("Lançamento atualizado", {
-          description: salvo.description,
+          description: transactionLabel(salvo),
         })
         navigate(paths.app.transactions)
       }}

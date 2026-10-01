@@ -59,6 +59,7 @@ import {
   withoutFilters,
   type FilterKey,
 } from "@/lib/transaction-filters"
+import { transactionLabel } from "@/lib/transaction-label"
 import { cn } from "@/lib/utils"
 import { editTransactionPath, paths } from "@/routes/paths"
 
@@ -272,7 +273,11 @@ export function TransactionsPage() {
                   <TableRow key={item.id}>
                     <TableCell className="pl-6">
                       <span className="block max-w-64 truncate">
-                        {item.description}
+                        {item.description ?? (
+                          <span className="text-muted-foreground italic">
+                            Sem descrição
+                          </span>
+                        )}
                       </span>
                       {item.source === "assistente" && (
                         <span className="text-ai-accent mt-0.5 inline-flex items-center gap-1 text-xs">
@@ -303,14 +308,14 @@ export function TransactionsPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`Visualizar ${item.description}`}
+                          aria-label={`Visualizar ${transactionLabel(item)}`}
                           onClick={() => setSelectedId(item.id)}
                         >
                           <Eye />
                         </Button>
                         <Link
                           to={editTransactionPath(item.id)}
-                          aria-label={`Editar ${item.description}`}
+                          aria-label={`Editar ${transactionLabel(item)}`}
                           className={buttonVariants({
                             variant: "ghost",
                             size: "icon-sm",
@@ -322,7 +327,7 @@ export function TransactionsPage() {
                           variant="ghost"
                           size="icon-sm"
                           className="text-destructive hover:text-destructive"
-                          aria-label={`Excluir ${item.description}`}
+                          aria-label={`Excluir ${transactionLabel(item)}`}
                           onClick={() => setToDelete(item)}
                         >
                           <Trash2 />
@@ -452,7 +457,9 @@ function DetailFields({ item }: { item: ApiTransaction }) {
         <span className="financial-value">{formatDate(item.date)}</span>
       </Detail>
       <Detail label="Descrição" full>
-        {item.description}
+        {item.description ?? (
+          <span className="text-muted-foreground italic">Sem descrição</span>
+        )}
       </Detail>
       <Detail label="Registrado em">
         <span className="financial-value">

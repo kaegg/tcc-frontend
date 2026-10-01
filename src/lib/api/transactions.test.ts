@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { isApiError } from "@/lib/api/errors"
 import {
-  amountToApi,
   createTransaction,
   deleteTransaction,
   updateTransaction,
@@ -45,17 +44,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-})
-
-describe("amountToApi", () => {
-  it.each([
-    [35.9, "35.90"],
-    [35, "35.00"],
-    [0.01, "0.01"],
-    [1234.5, "1234.50"],
-  ])("%s vira %s", (valor, esperado) => {
-    expect(amountToApi(valor)).toBe(esperado)
-  })
 })
 
 describe("createTransaction", () => {

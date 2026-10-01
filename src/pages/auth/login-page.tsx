@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { signIn } from "@/lib/api/auth-session"
 import { describeApiError, isApiError } from "@/lib/api/errors"
 import { loginSchema, type LoginValues } from "@/pages/auth/auth-schemas"
+import { afterLoginPath } from "@/routes/after-login"
 import { paths } from "@/routes/paths"
 
 export function LoginPage() {
@@ -35,11 +36,7 @@ export function LoginPage() {
     defaultValues: { email: "", password: "" },
   })
 
-  // A rota que o usuário tentou abrir antes de cair no login, guardada pelo
-  // ProtectedRoute. Sem ela, o destino padrão é o dashboard.
-  const from =
-    (location.state as { from?: { pathname: string } } | null)?.from
-      ?.pathname ?? paths.app.dashboard
+  const from = afterLoginPath(location.state)
 
   const entrar = useMutation({
     mutationFn: signIn,

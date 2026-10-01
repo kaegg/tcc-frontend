@@ -12,16 +12,22 @@ import { NewTransactionPage } from "@/pages/app/new-transaction-page"
 import { ProfilePage } from "@/pages/app/profile-page"
 import { ReportsPage } from "@/pages/app/reports-page"
 import { TransactionsPage } from "@/pages/app/transactions-page"
+import { GuestRoute } from "@/routes/guest-route"
 import { ProtectedRoute } from "@/routes/protected-route"
 import { paths } from "@/routes/paths"
 
 export const router = createBrowserRouter([
-  // Área pública: acessível sem sessão ativa.
+  // Área pública: só sem sessão ativa; com sessão, o GuestRoute redireciona.
   {
-    element: <AuthLayout />,
+    element: <GuestRoute />,
     children: [
-      { path: paths.public.login, element: <LoginPage /> },
-      { path: paths.public.register, element: <RegisterPage /> },
+      {
+        element: <AuthLayout />,
+        children: [
+          { path: paths.public.login, element: <LoginPage /> },
+          { path: paths.public.register, element: <RegisterPage /> },
+        ],
+      },
     ],
   },
 

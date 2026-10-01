@@ -82,7 +82,8 @@ export const transactionSchema = z.object({
   type: transactionTypeSchema,
   amount: z.string(),
   date: z.string(),
-  description: z.string(),
+  /** Opcional desde 2026-09-29: nula quando o usuário não descreve. */
+  description: z.string().nullable(),
   categoryId: z.string(),
   categoryName: z.string(),
   source: z.enum(["formulario", "assistente"]),

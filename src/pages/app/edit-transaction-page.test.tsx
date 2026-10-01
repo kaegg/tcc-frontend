@@ -111,9 +111,9 @@ describe("EditTransactionPage", () => {
     )
     renderizar()
 
-    expect(await screen.findByLabelText("Valor")).toHaveValue(35.9)
+    expect(await screen.findByLabelText("Valor")).toHaveValue("35,90")
     expect(screen.getByLabelText("Data")).toHaveValue("2026-08-31")
-    expect(screen.getByLabelText("Descrição")).toHaveValue("Almoço no campus")
+    expect(screen.getByLabelText(/Descrição/)).toHaveValue("Almoço no campus")
     await waitFor(() =>
       expect(screen.getByLabelText("Categoria")).toHaveTextContent(
         "Alimentação",
@@ -138,7 +138,8 @@ describe("EditTransactionPage", () => {
       ),
     )
     await user.clear(valor)
-    await user.type(valor, "42")
+    // Preenchido pela direita: 4, 2, 0, 0 → R$ 42,00.
+    await user.type(valor, "4200")
     await user.click(screen.getByRole("button", { name: "Salvar alterações" }))
 
     expect(await screen.findByText("Lista de lançamentos")).toBeInTheDocument()
@@ -149,6 +150,33 @@ describe("EditTransactionPage", () => {
       categoryId: ALIMENTACAO,
       date: "2026-08-31",
       description: "Almoço no campus",
+    })
+  })
+
+  it("apagar a descrição envia nula, porque ela é opcional", async () => {
+    rotas((url, method) => {
+      if (url.pathname !== `/api/transactions/${ID}`) return undefined
+      return method === "PATCH"
+        ? { status: 200, body: { ...ATUAL, description: null } }
+        : { status: 200, body: ATUAL }
+    })
+    const user = userEvent.setup()
+    renderizar()
+
+    await screen.findByLabelText("Valor")
+    await waitFor(() =>
+      expect(screen.getByLabelText("Categoria")).toHaveTextContent(
+        "Alimentação",
+      ),
+    )
+    await user.clear(screen.getByLabelText(/Descrição/))
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }))
+
+    expect(await screen.findByText("Lista de lançamentos")).toBeInTheDocument()
+    const [[, init]] = patches() as [[string, RequestInit]]
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      amount: "35.90",
+      description: null,
     })
   })
 
@@ -164,7 +192,7 @@ describe("EditTransactionPage", () => {
     const valor = await screen.findByLabelText("Valor")
     await user.clear(valor)
     await user.type(valor, "0")
-    const descricao = screen.getByLabelText("Descrição")
+    const descricao = screen.getByLabelText(/Descrição/)
     await user.clear(descricao)
     await user.type(descricao, "ab")
     await user.click(screen.getByRole("button", { name: "Salvar alterações" }))

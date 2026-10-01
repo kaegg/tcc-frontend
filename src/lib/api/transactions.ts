@@ -11,20 +11,13 @@ import {
 
 export type CreateTransactionInput = {
   type: TransactionType
-  /** Texto decimal com ponto e duas casas; ver `amountToApi`. */
+  /** Texto decimal com ponto e duas casas; ver `centsToApi`. */
   amount: string
   categoryId: string
   /** Data civil `AAAA-MM-DD`. */
   date: string
-  description: string
-}
-
-/**
- * Valor do campo numérico como o contrato pede: texto com duas casas.
- * O backend recusa número JSON, que perderia precisão.
- */
-export function amountToApi(value: number): string {
-  return value.toFixed(2)
+  /** Opcional: nula quando o usuário não descreve o lançamento. */
+  description: string | null
 }
 
 export function createTransaction(

@@ -173,7 +173,11 @@ export function DashboardPage() {
                     <TableRow key={item.id}>
                       <TableCell className="pl-6">
                         <span className="block max-w-56 truncate">
-                          {item.description}
+                          {item.description ?? (
+                            <span className="text-muted-foreground italic">
+                              Sem descrição
+                            </span>
+                          )}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {item.categoryName}

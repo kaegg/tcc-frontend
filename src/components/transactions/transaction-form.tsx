@@ -28,10 +28,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/use-categories"
 import { describeApiError, fieldErrorsOf } from "@/lib/api/errors"
 import type { ApiTransaction, Category } from "@/lib/api/schemas"
+import type { CreateTransactionInput } from "@/lib/api/transactions"
 import {
-  amountToApi,
-  type CreateTransactionInput,
-} from "@/lib/api/transactions"
+  centsToApi,
+  digitsToCents,
+  formatCents,
+  MAX_CENTS,
+} from "@/lib/money-input"
 import { cn } from "@/lib/utils"
 import { paths } from "@/routes/paths"
 
@@ -41,7 +44,8 @@ const MAX_DATE = "2100-01-01"
 
 /**
  * valor positivo, data válida, tipo e categoria obrigatórios e categoria
- * compatível com o tipo do lançamento.
+ * compatível com o tipo do lançamento. A descrição é opcional (o critério da
+ * TCC-012 não a exige), mas, quando preenchida, segue as regras do backend.
  *
  * É uma fábrica, e não um schema no escopo do módulo, porque a última regra
  * depende da lista de categorias — que agora chega da API. Um schema montado
@@ -57,13 +61,23 @@ function createTransactionSchema(categories: Category[]) {
   return z
     .object({
       type: z.enum(["receita", "despesa"]),
-      amount: z
+      // Entra `null` com o campo vazio e sai sempre um número validado.
+      amountCents: z
         .number({ error: "Informe o valor." })
-        .positive("O valor deve ser maior que zero.")
-        .max(9_999_999_999.99, "O valor deve ser no máximo 9.999.999.999,99.")
-        .refine(
-          (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6,
-          "Use no máximo duas casas decimais.",
+        .nullable()
+        .transform((value, ctx) => {
+          if (value === null) {
+            ctx.addIssue({ code: "custom", message: "Informe o valor." })
+            return z.NEVER
+          }
+          return value
+        })
+        .pipe(
+          z
+            .number()
+            .int()
+            .positive("O valor deve ser maior que zero.")
+            .max(MAX_CENTS, "O valor deve ser no máximo 9.999.999.999,99."),
         ),
       categoryId: z.string().min(1, "Selecione uma categoria."),
       date: z
@@ -76,8 +90,11 @@ function createTransactionSchema(categories: Category[]) {
       description: z
         .string()
         .trim()
-        .min(3, "Descreva o lançamento com pelo menos 3 caracteres.")
-        .max(140, "A descrição deve ter no máximo 140 caracteres."),
+        .max(140, "A descrição deve ter no máximo 140 caracteres.")
+        .refine(
+          (value) => value === "" || value.length >= 3,
+          "Descreva o lançamento com pelo menos 3 caracteres.",
+        ),
     })
     .refine(
       (data) =>
@@ -89,17 +106,31 @@ function createTransactionSchema(categories: Category[]) {
     )
 }
 
-export type TransactionFormValues = z.infer<
-  ReturnType<typeof createTransactionSchema>
->
+type TransactionSchema = ReturnType<typeof createTransactionSchema>
 
-const CAMPOS = ["type", "amount", "categoryId", "date", "description"] as const
+/** O que o formulário guarda enquanto é preenchido. */
+type TransactionFormInput = z.input<TransactionSchema>
 
-const ehCampo = (campo: string): campo is (typeof CAMPOS)[number] =>
-  (CAMPOS as readonly string[]).includes(campo)
+/** O que sai validado e vai para a API. */
+export type TransactionFormValues = z.output<TransactionSchema>
+
+type Campo = keyof TransactionFormValues
+
+/** Campo da API → campo do formulário, que guarda o valor em centavos. */
+const CAMPO_DA_API: Record<string, Campo> = {
+  type: "type",
+  amount: "amountCents",
+  categoryId: "categoryId",
+  date: "date",
+  description: "description",
+}
+
+const ehCampo = (campo: string) => campo in CAMPO_DA_API
 
 type TransactionFormProps = {
-  defaultValues: Omit<TransactionFormValues, "amount"> & { amount?: number }
+  defaultValues: Omit<TransactionFormInput, "amountCents"> & {
+    amountCents?: number | null
+  }
   save: (input: CreateTransactionInput) => Promise<ApiTransaction>
   onSaved: (saved: ApiTransaction) => void | Promise<void>
   submitLabel: string
@@ -138,7 +169,7 @@ export function TransactionForm({
     setValue,
     setError,
     formState: { errors },
-  } = useForm<TransactionFormValues>({
+  } = useForm<TransactionFormInput, unknown, TransactionFormValues>({
     resolver: zodResolver(schema),
     defaultValues,
   })
@@ -160,17 +191,17 @@ export function TransactionForm({
     mutationFn: (values: TransactionFormValues) =>
       save({
         type: values.type,
-        amount: amountToApi(values.amount),
+        amount: centsToApi(values.amountCents),
         categoryId: values.categoryId,
         date: values.date,
-        description: values.description,
+        description: values.description === "" ? null : values.description,
       }),
     onSuccess: onSaved,
     onError: (erro) => {
       // O backend devolve a falha por campo; ela é marcada no campo que a causou.
       for (const [campo, mensagens] of Object.entries(fieldErrorsOf(erro))) {
         if (ehCampo(campo) && mensagens[0]) {
-          setError(campo, { message: mensagens[0] })
+          setError(CAMPO_DA_API[campo], { message: mensagens[0] })
         }
       }
     },
@@ -226,21 +257,48 @@ export function TransactionForm({
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={Boolean(errors.amount)}>
+          <Field data-invalid={Boolean(errors.amountCents)}>
             <FieldLabel htmlFor="valor">Valor</FieldLabel>
-            <Input
-              id="valor"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="0,00"
-              className="h-10"
-              aria-invalid={Boolean(errors.amount)}
-              aria-describedby={errors.amount ? "valor-error" : undefined}
-              {...register("amount", { valueAsNumber: true })}
+            <Controller
+              control={control}
+              name="amountCents"
+              render={({ field }) => (
+                <div className="relative">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground"
+                  >
+                    R$
+                  </span>
+                  <Input
+                    id="valor"
+                    ref={field.ref}
+                    name={field.name}
+                    // Texto, e não number: o campo mostra "2,50", que um
+                    // input numérico recusaria por causa da vírgula.
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="0,00"
+                    className="financial-value h-10 pl-9"
+                    value={
+                      field.value === null || field.value === undefined
+                        ? ""
+                        : formatCents(field.value)
+                    }
+                    onChange={(event) =>
+                      field.onChange(digitsToCents(event.target.value))
+                    }
+                    onBlur={field.onBlur}
+                    aria-invalid={Boolean(errors.amountCents)}
+                    aria-describedby={
+                      errors.amountCents ? "valor-error" : undefined
+                    }
+                  />
+                </div>
+              )}
             />
-            <FieldError id="valor-error" errors={[errors.amount]} />
+            <FieldError id="valor-error" errors={[errors.amountCents]} />
           </Field>
 
           <Field data-invalid={Boolean(errors.date)}>
@@ -318,7 +376,12 @@ export function TransactionForm({
         </Field>
 
         <Field data-invalid={Boolean(errors.description)}>
-          <FieldLabel htmlFor="descricao">Descrição</FieldLabel>
+          <FieldLabel htmlFor="descricao">
+            Descrição{" "}
+            <span className="font-normal text-muted-foreground">
+              (opcional)
+            </span>
+          </FieldLabel>
           <Textarea
             id="descricao"
             rows={3}

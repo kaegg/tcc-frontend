@@ -4,6 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom"
 import { useSession } from "@/hooks/use-session"
 import { restoreSession } from "@/lib/api/auth-session"
 import { paths } from "@/routes/paths"
+import { SessionCheck } from "@/routes/session-check"
 
 /**
  * Envolve as rotas privadas. Enquanto a sessão é verificada exibe um estado de
@@ -20,17 +21,7 @@ export function ProtectedRoute() {
     void restoreSession()
   }, [])
 
-  if (isLoading) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex min-h-svh items-center justify-center text-sm text-muted-foreground"
-      >
-        Verificando sua sessão...
-      </div>
-    )
-  }
+  if (isLoading) return <SessionCheck />
 
   if (!isAuthenticated) {
     return (
