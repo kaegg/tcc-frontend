@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, useLocation } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TransactionsPage } from "@/pages/app/transactions-page"
@@ -98,6 +98,14 @@ const chamadasDe = (method: string) =>
     (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === method,
   )
 
+/** Mostra a consulta da URL atual, para os testes conferirem filtros e modal. */
+function UrlAtual() {
+  return <output data-testid="url">{useLocation().search}</output>
+}
+
+const urlAtual = () =>
+  new URLSearchParams(screen.getByTestId("url").textContent ?? "")
+
 function renderizar(url = "/lancamentos"): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -107,6 +115,7 @@ function renderizar(url = "/lancamentos"): void {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
         <TransactionsPage />
+        <UrlAtual />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -289,15 +298,69 @@ describe("TransactionsPage", () => {
     )
   })
 
-  it("oferece editar cada lançamento pela rota de edição", async () => {
-    rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
-    renderizar()
+  describe("cadastro e edição em modal", () => {
+    it("o lápis abre a edição sem perder filtros e página", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)], 2, 3, 41) }))
+      renderizar("/lancamentos?type=despesa&page=2")
 
-    const editar = await screen.findByRole("link", {
-      name: "Editar Almoço no campus",
+      const editar = await screen.findByRole("link", {
+        name: "Editar Almoço no campus",
+      })
+      const destino = new URLSearchParams(
+        editar.getAttribute("href")?.split("?")[1],
+      )
+
+      expect(Object.fromEntries(destino)).toEqual({
+        type: "despesa",
+        page: "2",
+        editar: ID_1,
+      })
     })
 
-    expect(editar).toHaveAttribute("href", `/lancamentos/${ID_1}/editar`)
+    it("Novo lançamento abre o modal por cima da lista", async () => {
+      rotas(() => ({ status: 200, body: pagina([item(ID_1)]) }))
+      const user = userEvent.setup()
+      renderizar()
+
+      await screen.findByText("Almoço no campus")
+      await user.click(screen.getByRole("link", { name: /Novo lançamento/ }))
+
+      expect(
+        await screen.findByRole("dialog", { name: "Novo lançamento" }),
+      ).toBeInTheDocument()
+      expect(urlAtual().get("novo")).toBe("1")
+    })
+
+    it("salvar a edição fecha o modal e mantém os filtros da lista", async () => {
+      rotas((url, method) => {
+        if (url.pathname === `/api/transactions/${ID_1}`) {
+          return method === "PATCH"
+            ? { status: 200, body: item(ID_1, { amount: "40.00" }) }
+            : { status: 200, body: item(ID_1) }
+        }
+        return { status: 200, body: pagina([item(ID_1)]) }
+      })
+      const user = userEvent.setup()
+      renderizar(`/lancamentos?type=despesa&editar=${ID_1}`)
+
+      const dialogo = await screen.findByRole("dialog", {
+        name: "Editar lançamento",
+      })
+      await waitFor(() =>
+        expect(within(dialogo).getByLabelText("Categoria")).toHaveTextContent(
+          "Alimentação",
+        ),
+      )
+      await user.click(
+        within(dialogo).getByRole("button", { name: "Salvar alterações" }),
+      )
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      )
+      expect(Object.fromEntries(urlAtual())).toEqual({ type: "despesa" })
+      expect(chamadasDe("PATCH")).toHaveLength(1)
+    })
   })
 
   describe("exclusão", () => {

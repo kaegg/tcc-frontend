@@ -41,7 +41,7 @@ import type { CategoryTotal, MonthlySummary } from "@/lib/api/schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { formatMonth, monthFromParams, monthPeriod } from "@/lib/report-month"
 import { cn } from "@/lib/utils"
-import { paths } from "@/routes/paths"
+import { newTransactionHref, paths } from "@/routes/paths"
 
 const LATEST_COUNT = 6
 
@@ -88,7 +88,7 @@ export function DashboardPage() {
               Assistente
             </Link>
             <Link
-              to={paths.app.newTransaction}
+              to={newTransactionHref}
               className={cn(buttonVariants(), "h-9")}
             >
               <Plus />

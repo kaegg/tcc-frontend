@@ -17,6 +17,7 @@ import {
 import { PageHeader } from "@/components/app/page-header"
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
 import { DeleteTransactionDialog } from "@/components/transactions/delete-transaction-dialog"
+import { TransactionDialog } from "@/components/transactions/transaction-dialog"
 import { TransactionFiltersBar } from "@/components/transactions/transaction-filters-bar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -59,9 +60,13 @@ import {
   withoutFilters,
   type FilterKey,
 } from "@/lib/transaction-filters"
+import {
+  dialogTargetFromParams,
+  withDialog,
+  withoutDialog,
+} from "@/lib/transaction-dialog-params"
 import { transactionLabel } from "@/lib/transaction-label"
 import { cn } from "@/lib/utils"
-import { editTransactionPath, paths } from "@/routes/paths"
 
 /**
  * O valor chega como texto decimal e só vira `number` aqui, na exibição:
@@ -106,6 +111,17 @@ export function TransactionsPage() {
   const clearFilters = () =>
     setParams((current) => withoutFilters(current), { replace: true })
 
+  // Abrir empilha no histórico (Voltar fecha); fechar substitui, para Voltar
+  // depois não reabrir o modal.
+  const dialogTarget = dialogTargetFromParams(params)
+  const newHref = `?${withDialog(params, { kind: "new" })}`
+  const editHref = (id: string) =>
+    `?${withDialog(params, { kind: "edit", id })}`
+  const closeDialog = useCallback(
+    () => setParams((current) => withoutDialog(current), { replace: true }),
+    [setParams],
+  )
+
   // Período invertido não vai ao servidor; a lista anterior fica na tela.
   const query = useTransactions(page, filters, invalidPeriod === null)
   const meta = query.data?.meta
@@ -121,10 +137,7 @@ export function TransactionsPage() {
         title="Lançamentos"
         description="Todas as suas receitas e despesas registradas."
         actions={
-          <Link
-            to={paths.app.newTransaction}
-            className={cn(buttonVariants(), "h-9")}
-          >
+          <Link to={newHref} className={cn(buttonVariants(), "h-9")}>
             <Plus />
             Novo lançamento
           </Link>
@@ -229,10 +242,7 @@ export function TransactionsPage() {
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <Link
-                  to={paths.app.newTransaction}
-                  className={cn(buttonVariants(), "h-9")}
-                >
+                <Link to={newHref} className={cn(buttonVariants(), "h-9")}>
                   <Plus />
                   Novo lançamento
                 </Link>
@@ -314,7 +324,7 @@ export function TransactionsPage() {
                           <Eye />
                         </Button>
                         <Link
-                          to={editTransactionPath(item.id)}
+                          to={editHref(item.id)}
                           aria-label={`Editar ${transactionLabel(item)}`}
                           className={buttonVariants({
                             variant: "ghost",
@@ -375,6 +385,8 @@ export function TransactionsPage() {
       </Card>
 
       <TransactionDetails id={selectedId} onClose={() => setSelectedId(null)} />
+
+      <TransactionDialog target={dialogTarget} onClose={closeDialog} />
 
       <DeleteTransactionDialog
         item={toDelete}

@@ -34,10 +34,16 @@ describe("campo de valor preenchido pela direita", () => {
     expect(formatCents(digitsToCents("2,5")!)).toBe("0,25")
   })
 
-  it("campo vazio é 'não informado', e não zero", () => {
+  it("campo vazio é 'não informado'", () => {
     expect(digitsToCents("")).toBeNull()
     expect(digitsToCents("R$ ,")).toBeNull()
-    expect(digitsToCents("0")).toBe(0)
+  })
+
+  it("só zeros é campo vazio, para o Backspace conseguir esvaziar", () => {
+    // "0,01" menos o último caractere é "0,0".
+    expect(digitsToCents("0,0")).toBeNull()
+    expect(digitsToCents("0")).toBeNull()
+    expect(digitsToCents("0,05")).toBe(5)
   })
 
   it("colar um valor formatado aproveita só os dígitos", () => {

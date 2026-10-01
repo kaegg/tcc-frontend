@@ -19,12 +19,16 @@ const brl = new Intl.NumberFormat("pt-BR", {
 /**
  * Centavos a partir do que está no campo. Só os dígitos contam, então colar
  * "1.234,56" também funciona. Dígitos além do limite são ignorados, em vez de
- * empurrar os primeiros para fora. Campo vazio é `null`: "não informado",
- * diferente de zero. Não `undefined`: com ele, o Controller do React Hook
- * Form volta ao valor padrão, e na edição o valor apagado reapareceria.
+ * empurrar os primeiros para fora. Campo vazio é `null`: "não informado".
+ * Não `undefined`: com ele, o Controller do React Hook Form volta ao valor
+ * padrão, e na edição o valor apagado reapareceria.
+ *
+ * Zeros à esquerda não contam, e só zeros é campo vazio. Sem isso, apagar
+ * "0,01" deixaria "0,00" para sempre: o Backspace tira um dígito e a máscara
+ * repõe o zero, e o campo nunca voltaria a ficar vazio.
  */
 export function digitsToCents(text: string): number | null {
-  const digits = text.replace(/\D/g, "").slice(0, MAX_DIGITS)
+  const digits = text.replace(/\D/g, "").replace(/^0+/, "").slice(0, MAX_DIGITS)
 
   return digits === "" ? null : Number(digits)
 }

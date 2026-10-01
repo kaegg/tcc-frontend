@@ -21,7 +21,7 @@ import { formatDateTime } from "@/lib/format"
 import { ASSISTANT_UNAVAILABLE_MESSAGE } from "@/lib/pending-backend"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation } from "@/lib/types"
-import { paths } from "@/routes/paths"
+import { newTransactionHref } from "@/routes/paths"
 
 /** Resposta encenada do assistente. Enquanto o gateway Socket.IO e o Ollama não
  *  existem, o texto é digitado caractere a caractere para que
@@ -201,7 +201,7 @@ export function AssistantPage() {
                     message={message}
                     onConfirm={() => resolveProposal(message.id, "confirmada")}
                     onCancel={() => resolveProposal(message.id, "cancelada")}
-                    onEdit={() => navigate(paths.app.newTransaction)}
+                    onEdit={() => navigate(newTransactionHref)}
                   />
                 ))}
 

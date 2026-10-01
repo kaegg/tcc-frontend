@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useMemo, useState } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
@@ -7,7 +6,7 @@ import { CircleAlert, Loader2, RefreshCw } from "lucide-react"
 import { z } from "zod"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Field,
   FieldDescription,
@@ -35,8 +34,6 @@ import {
   formatCents,
   MAX_CENTS,
 } from "@/lib/money-input"
-import { cn } from "@/lib/utils"
-import { paths } from "@/routes/paths"
 
 /** Mesma faixa do CHECK `transactions_date_in_range` do banco. */
 const MIN_DATE = "2000-01-01"
@@ -133,6 +130,9 @@ type TransactionFormProps = {
   }
   save: (input: CreateTransactionInput) => Promise<ApiTransaction>
   onSaved: (saved: ApiTransaction) => void | Promise<void>
+  onCancel: () => void
+  /** Avisado quando o formulário passa a ter (ou deixa de ter) alterações. */
+  onDirtyChange?: (dirty: boolean) => void
   submitLabel: string
   errorTitle: string
 }
@@ -141,6 +141,8 @@ export function TransactionForm({
   defaultValues,
   save,
   onSaved,
+  onCancel,
+  onDirtyChange,
   submitLabel,
   errorTitle,
 }: TransactionFormProps) {
@@ -168,11 +170,15 @@ export function TransactionForm({
     control,
     setValue,
     setError,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<TransactionFormInput, unknown, TransactionFormValues>({
     resolver: zodResolver(schema),
     defaultValues,
   })
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
 
   const available = useMemo(
     () => (categories ?? []).filter((item) => item.type === type),
@@ -182,9 +188,9 @@ export function TransactionForm({
   function changeType(next: string) {
     const value = next === "receita" ? "receita" : "despesa"
     setType(value)
-    setValue("type", value)
+    setValue("type", value, { shouldDirty: true })
     // A categoria escolhida pode não existir no outro tipo, então é limpa.
-    setValue("categoryId", "")
+    setValue("categoryId", "", { shouldDirty: true })
   }
 
   const salvar = useMutation({
@@ -402,15 +408,17 @@ export function TransactionForm({
         </Field>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Link
-            to={paths.app.transactions}
-            className={cn(buttonVariants({ variant: "ghost" }), "h-10 sm:w-32")}
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-10 sm:min-w-32"
+            onClick={onCancel}
           >
             Cancelar
-          </Link>
+          </Button>
           <Button
             type="submit"
-            className="h-10 sm:w-32"
+            className="h-10 sm:min-w-32"
             disabled={salvar.isPending || loadingCategories || categoriesFailed}
           >
             {salvar.isPending ? (
