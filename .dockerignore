@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+coverage
+.git
+.github
+.vscode
+.idea
+*.log
+
+# Um .env local levaria a URL de desenvolvimento para o bundle; no build da imagem ela vem do ARG.
+.env
+.env.*
+!.env.example

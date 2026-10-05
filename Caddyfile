@@ -1,0 +1,28 @@
+# SITE_ADDRESS vem do compose. Com um domínio, o Caddy emite certificado Let's Encrypt sozinho;
+# com um IP (https://203.0.113.10), usa a CA interna dele. HTTPS não é opcional: o cookie de
+# refresh sai com `Secure` em produção e o navegador o descarta numa origem http que não seja
+# localhost, então a sessão cairia a cada recarga de página.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	# Reservado para o gateway do chatbot (TCC-022); o Caddy já encaminha WebSocket.
+	handle /socket.io/* {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	@spa not path /assets/* /api/* /socket.io/*
+	header @spa Cache-Control "no-cache"
+}

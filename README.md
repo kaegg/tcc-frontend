@@ -117,3 +117,9 @@ npm install       # instala as dependências
 npm run dev       # inicia o servidor de desenvolvimento (Vite, porta 5173)
 npm run preview   # serve o build de produção localmente
 ```
+
+## Produção
+
+A cada push na `main`, o CI publica a imagem `ghcr.io/kaegg/tcc-frontend` (bundle servido pelo Caddy, ver
+`Caddyfile`) e, com o deploy ligado, atualiza só o container do frontend no servidor. O compose e o passo a passo
+ficam no repositório do backend, em `deploy/README.md`.
