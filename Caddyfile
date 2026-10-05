@@ -1,7 +1,16 @@
-# SITE_ADDRESS vem do compose. Com um domínio, o Caddy emite certificado Let's Encrypt sozinho;
-# com um IP (https://203.0.113.10), usa a CA interna dele. HTTPS não é opcional: o cookie de
-# refresh sai com `Secure` em produção e o navegador o descarta numa origem http que não seja
-# localhost, então a sessão cairia a cada recarga de página.
+{
+	# Quem chega por endereço privado é proxy da própria máquina: o `cloudflared` do túnel ou o
+	# docker-proxy. Deles o X-Forwarded-For é mantido; de qualquer outro é sobrescrito com o IP
+	# real. Sem isto, atrás do túnel todos os participantes teriam o mesmo IP para a API, e o
+	# limite de cadastro por IP bloquearia o estudo.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+# Padrão `:80`, HTTP: o HTTPS fica com a Cloudflare na frente do túnel. O cookie de refresh sai
+# `Secure` em produção, o que o navegador aceita em https:// e em http://localhost, nunca em
+# http://IP. Para servir HTTPS direto, sem túnel, use um domínio aqui e publique a porta 443.
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
