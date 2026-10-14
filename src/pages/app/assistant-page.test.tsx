@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
@@ -6,8 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AssistantPage } from "@/pages/app/assistant-page"
 
 type Handler = (...args: unknown[]) => void
-type Ack =
-  { ok: true; reply?: string } | { ok: false; code: string; message: string }
+type Ack = { ok: boolean } & Record<string, unknown>
 
 /** Dublê do socket do Socket.IO com só o que o hook usa. */
 class FakeSocket {
@@ -92,12 +92,21 @@ function enviadas() {
     )
 }
 
-async function abrir() {
+function renderizar() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   render(
-    <MemoryRouter>
-      <AssistantPage />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <AssistantPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
+}
+
+async function abrir() {
+  renderizar()
   await screen.findByText("Conectado ao assistente")
 }
 
@@ -252,11 +261,7 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
 
   it("renova a sessão quando o servidor recusa o handshake", async () => {
     refreshSession.mockResolvedValue(true)
-    render(
-      <MemoryRouter>
-        <AssistantPage />
-      </MemoryRouter>,
-    )
+    renderizar()
     await screen.findByText("Conectado ao assistente")
 
     act(() => {
@@ -339,5 +344,262 @@ describe("AssistantPage — lançamento em andamento (TCC-025)", () => {
     expect(
       screen.queryByText("Lançamento em andamento"),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe("AssistantPage — confirmação de lançamento (TCC-026)", () => {
+  const ALIMENTACAO = "0199a1b2-c3d4-7000-8000-00000000c001"
+  const TRANSPORTE = "0199a1b2-c3d4-7000-8000-00000000c002"
+
+  const PROPOSTA = {
+    id: "p1",
+    type: "despesa",
+    amount: "45.00",
+    categoryId: ALIMENTACAO,
+    categoryName: "Alimentação",
+    date: "2026-10-12",
+    description: "Mercado",
+    dateDefaulted: false,
+  }
+
+  const pronto = (proposal: object = PROPOSTA) => ({
+    missing: [],
+    ready: true,
+    proposal,
+  })
+
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: [
+                { id: ALIMENTACAO, name: "Alimentação", type: "despesa" },
+                { id: TRANSPORTE, name: "Transporte", type: "despesa" },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function responder(
+    id: string,
+    texto: string,
+    pending: unknown,
+    outcome: string | null = null,
+  ) {
+    act(() => fake.fire("reply:chunk", { id, text: texto }))
+    act(() => fake.fire("reply:end", { id, pending, outcome }))
+  }
+
+  async function comProposta() {
+    await abrir()
+    const user = await escrever("gastei 45 no mercado ontem")
+    const [{ id, conversationId }] = enviadas()
+    responder(id, "Entendi: despesa de R$ 45,00.", pronto())
+    return { user, conversationId }
+  }
+
+  const cartao = () =>
+    screen.getByText("Proposta de lançamento").parentElement!
+      .parentElement as HTMLElement
+
+  it("mostra no cartão todos os dados que serão gravados", async () => {
+    await comProposta()
+
+    const card = within(cartao())
+    expect(card.getByText("Aguardando confirmação")).toBeInTheDocument()
+    expect(card.getByText("Despesa")).toBeInTheDocument()
+    expect(card.getByText(/45,00/)).toBeInTheDocument()
+    expect(card.getByText("Alimentação")).toBeInTheDocument()
+    expect(card.getByText(/12 de outubro de 2026/)).toBeInTheDocument()
+    expect(card.getByText("Mercado")).toBeInTheDocument()
+  })
+
+  it("confirma pelo botão a versão que está na tela", async () => {
+    const { user, conversationId } = await comProposta()
+    fake.acks.push({
+      ok: true,
+      reply: "Pronto, registrei: despesa de R$ 45,00 em Alimentação.",
+    })
+
+    await user.click(screen.getByRole("button", { name: "Confirmar" }))
+
+    expect(fake.sent.at(-1)).toEqual({
+      event: "operation:confirm",
+      payload: { conversationId, proposalId: "p1" },
+    })
+    expect(await screen.findByText(/Pronto, registrei/)).toBeInTheDocument()
+    expect(within(cartao()).getByText("Registrada")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Confirmar" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Lançamento em andamento"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("edita no próprio cartão, sem sair do assistente, e confirma a versão editada", async () => {
+    const { user, conversationId } = await comProposta()
+
+    await user.click(screen.getByRole("button", { name: "Editar" }))
+    const valor = screen.getByLabelText("Valor")
+    expect(valor).toHaveValue("45,00")
+    await waitFor(() =>
+      expect(screen.getByLabelText("Categoria")).toHaveTextContent(
+        "Alimentação",
+      ),
+    )
+
+    await user.clear(valor)
+    await user.type(valor, "6000")
+    fake.acks.push({
+      ok: true,
+      pending: pronto({ ...PROPOSTA, id: "p2", amount: "60.00" }),
+    })
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }))
+
+    expect(fake.sent.at(-1)).toEqual({
+      event: "operation:edit",
+      payload: {
+        conversationId,
+        proposalId: "p1",
+        values: {
+          type: "despesa",
+          amount: "60.00",
+          categoryId: ALIMENTACAO,
+          date: "2026-10-12",
+          description: "Mercado",
+        },
+      },
+    })
+    const card = within(cartao())
+    expect(await card.findByText(/60,00/)).toBeInTheDocument()
+    expect(card.getByText("Dados corrigidos por você.")).toBeInTheDocument()
+    expect(card.getByText("Aguardando confirmação")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Confirmar" }))
+    expect(fake.sent.at(-1)).toEqual({
+      event: "operation:confirm",
+      payload: { conversationId, proposalId: "p2" },
+    })
+  })
+
+  it("marca no campo o erro da validação do servidor e continua editando", async () => {
+    const { user } = await comProposta()
+    await user.click(screen.getByRole("button", { name: "Editar" }))
+    await waitFor(() =>
+      expect(screen.getByLabelText("Categoria")).toHaveTextContent(
+        "Alimentação",
+      ),
+    )
+    fake.acks.push({
+      ok: false,
+      code: "dados_invalidos",
+      message: "A data deve estar entre 01/01/2000 e 01/01/2100.",
+      fieldErrors: {
+        date: ["A data deve estar entre 01/01/2000 e 01/01/2100."],
+      },
+    })
+
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }))
+
+    expect(
+      await screen.findByText(
+        "A data deve estar entre 01/01/2000 e 01/01/2100.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Salvar alterações" }),
+    ).toBeInTheDocument()
+  })
+
+  it("cancelar a edição volta ao cartão sem enviar nada", async () => {
+    const { user } = await comProposta()
+    const antes = fake.sent.length
+
+    await user.click(screen.getByRole("button", { name: "Editar" }))
+    await user.click(screen.getByRole("button", { name: "Cancelar edição" }))
+
+    expect(fake.sent).toHaveLength(antes)
+    expect(within(cartao()).getByText("Mercado")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeEnabled()
+  })
+
+  it("cancelar pelo cartão descarta a proposta", async () => {
+    const { user, conversationId } = await comProposta()
+    fake.acks.push({
+      ok: true,
+      reply:
+        "Tudo bem, cancelei o lançamento em andamento. Nada foi registrado.",
+    })
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }))
+
+    expect(fake.sent.at(-1)).toEqual({
+      event: "operation:cancel",
+      payload: { conversationId },
+    })
+    expect(await within(cartao()).findByText("Cancelada")).toBeInTheDocument()
+  })
+
+  it("lançamento que o servidor já não tem sai de circulação, sem gravar", async () => {
+    const { user } = await comProposta()
+    fake.acks.push({
+      ok: false,
+      code: "operacao_inexistente",
+      message: "Este lançamento não está mais aguardando confirmação.",
+    })
+
+    await user.click(screen.getByRole("button", { name: "Confirmar" }))
+
+    expect(await within(cartao()).findByText("Expirada")).toBeInTheDocument()
+    expect(
+      screen.getByText("Não foi possível registrar o lançamento"),
+    ).toBeInTheDocument()
+  })
+
+  it("confirmação por texto marca o cartão como registrado", async () => {
+    const { user } = await comProposta()
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Mensagem para o assistente" }),
+      "pode registrar{Enter}",
+    )
+    const { id } = enviadas().at(-1)!
+    responder(id, "Pronto, registrei.", null, "registrado")
+
+    expect(within(cartao()).getByText("Registrada")).toBeInTheDocument()
+  })
+
+  it("uma correção pela conversa substitui o cartão anterior", async () => {
+    const { user } = await comProposta()
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Mensagem para o assistente" }),
+      "na verdade foi 60{Enter}",
+    )
+    const { id } = enviadas().at(-1)!
+    responder(
+      id,
+      "Entendi: despesa de R$ 60,00.",
+      pronto({ ...PROPOSTA, id: "p2", amount: "60.00" }),
+    )
+
+    expect(screen.getByText("Substituída")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Confirmar" })).toHaveLength(1)
   })
 })

@@ -124,28 +124,35 @@ const CAMPO_DA_API: Record<string, Campo> = {
 
 const ehCampo = (campo: string) => campo in CAMPO_DA_API
 
-type TransactionFormProps = {
+/**
+ * `save` devolve o lançamento gravado no formulário convencional e a proposta
+ * atualizada no cartão do assistente (TCC-026): os dois caminhos validam com
+ * este mesmo schema.
+ */
+type TransactionFormProps<Saved> = {
   defaultValues: Omit<TransactionFormInput, "amountCents"> & {
     amountCents?: number | null
   }
-  save: (input: CreateTransactionInput) => Promise<ApiTransaction>
-  onSaved: (saved: ApiTransaction) => void | Promise<void>
+  save: (input: CreateTransactionInput) => Promise<Saved>
+  onSaved: (saved: Saved) => void | Promise<void>
   onCancel: () => void
   /** Avisado quando o formulário passa a ter (ou deixa de ter) alterações. */
   onDirtyChange?: (dirty: boolean) => void
   submitLabel: string
+  cancelLabel?: string
   errorTitle: string
 }
 
-export function TransactionForm({
+export function TransactionForm<Saved = ApiTransaction>({
   defaultValues,
   save,
   onSaved,
   onCancel,
   onDirtyChange,
   submitLabel,
+  cancelLabel = "Cancelar",
   errorTitle,
-}: TransactionFormProps) {
+}: TransactionFormProps<Saved>) {
   const [type, setType] = useState(defaultValues.type)
 
   const {
@@ -414,7 +421,7 @@ export function TransactionForm({
             className="h-10 sm:min-w-32"
             onClick={onCancel}
           >
-            Cancelar
+            {cancelLabel}
           </Button>
           <Button
             type="submit"

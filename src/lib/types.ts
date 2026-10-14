@@ -11,6 +11,7 @@
  */
 
 import type { TransactionType } from "@/lib/api/schemas"
+import type { Proposal } from "@/lib/chat/protocol"
 
 export type { Category, TransactionType } from "@/lib/api/schemas"
 
@@ -35,23 +36,24 @@ export type MonthlyPoint = {
 
 export type ChatRole = "user" | "assistant"
 
-/** Proposta estruturada que o assistente extrai de uma mensagem. Nunca é
- *  persistida sem confirmação explícita do usuário. */
-export type TransactionProposal = {
-  type: TransactionType
-  amount: number
-  categoryId: string
-  date: string
-  description: string
-}
+/**
+ * - `substituida`: a conversa mudou os dados, e o cartão novo é o que vale.
+ * - `expirada`: o servidor não tem mais o lançamento (15 min parado ou
+ *   reinício); nada foi gravado.
+ */
+export type ProposalStatus =
+  "pendente" | "confirmada" | "cancelada" | "substituida" | "expirada"
 
 export type ChatMessage = {
   id: string
   role: ChatRole
   content: string
-  /** Presente quando a mensagem do assistente propõe um lançamento. */
-  proposal?: TransactionProposal
-  proposalStatus?: "pendente" | "confirmada" | "cancelada"
+  /** Presente quando a mensagem do assistente propõe um lançamento. Nunca é
+   *  persistida sem confirmação explícita do usuário. */
+  proposal?: Proposal
+  proposalStatus?: ProposalStatus
+  /** O usuário corrigiu os dados no próprio cartão. */
+  proposalEdited?: boolean
   /** Resposta cortada por cancelamento ou falha no meio da geração. */
   interrupted?: boolean
 }

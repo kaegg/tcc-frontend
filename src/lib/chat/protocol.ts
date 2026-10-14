@@ -2,6 +2,8 @@
  * Contrato do gateway do chat. Espelha `src/chat/chat.protocol.ts` do backend.
  */
 
+import type { TransactionType } from "@/lib/api/schemas"
+
 export const ChatEvent = {
   send: "message:send",
   cancel: "reply:cancel",
@@ -9,11 +11,18 @@ export const ChatEvent = {
   end: "reply:end",
   error: "reply:error",
   cancelOperation: "operation:cancel",
+  confirmOperation: "operation:confirm",
+  editOperation: "operation:edit",
 } as const
 
 export const MAX_MESSAGE_CHARS = 2000
 
-export type ChatFailure = { code: string; message: string }
+export type ChatFailure = {
+  code: string
+  message: string
+  /** Mensagens por campo, quando a edição do lançamento é reprovada. */
+  fieldErrors?: Record<string, string[]>
+}
 
 export type SendMessagePayload = {
   id: string
@@ -24,14 +33,48 @@ export type SendMessagePayload = {
 export type SendMessageAck = { ok: true } | ({ ok: false } & ChatFailure)
 
 export type ReplyChunk = { id: string; text: string }
-/** Lançamento sendo preenchido na conversa, depois da resposta. */
-export type PendingSummary = { missing: string[]; ready: boolean }
+/**
+ * Lançamento completo que aguarda confirmação. O `id` muda a cada alteração:
+ * confirmar e editar enviam o que está na tela, e o servidor recusa se os
+ * dados já mudaram.
+ */
+export type Proposal = {
+  id: string
+  type: TransactionType
+  /** Texto decimal com ponto e duas casas, como na API REST. */
+  amount: string
+  categoryId: string
+  categoryName: string
+  date: string
+  description: string | null
+  /** A data não foi dita: o assistente assumiu hoje, como o formulário. */
+  dateDefaulted: boolean
+}
 
-export type ReplyEnd = { id: string; pending?: PendingSummary | null }
+/** Lançamento sendo preenchido na conversa, depois da resposta. */
+export type PendingSummary = {
+  missing: string[]
+  ready: boolean
+  proposal?: Proposal | null
+}
+
+/** O que a mensagem fez com o lançamento pendente, quando o encerrou. */
+export type OperationOutcome = "registrado" | "cancelado"
+
+export type ReplyEnd = {
+  id: string
+  pending?: PendingSummary | null
+  outcome?: OperationOutcome | null
+}
 export type ReplyError = { id: string } & ChatFailure
 
 export type CancelOperationAck =
   { ok: true; reply: string } | ({ ok: false } & ChatFailure)
+
+export type ConfirmOperationAck = CancelOperationAck
+
+export type EditOperationAck =
+  { ok: true; pending: PendingSummary } | ({ ok: false } & ChatFailure)
 
 export const CONNECTION_LOST: ChatFailure = {
   code: "desconectado",

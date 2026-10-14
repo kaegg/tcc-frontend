@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   CircleAlert,
   MessageSquarePlus,
@@ -9,7 +9,6 @@ import {
   Square,
   X,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { ProposalCard } from "@/components/app/proposal-card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -19,22 +18,50 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useChatSocket, type ChatConnection } from "@/hooks/use-chat-socket"
+import { ApiError } from "@/lib/api/errors"
+import { invalidateFinancialData } from "@/lib/api/invalidate"
+import type { CreateTransactionInput } from "@/lib/api/transactions"
 import {
   MAX_MESSAGE_CHARS,
   NOT_CONNECTED,
+  type ChatFailure,
+  type OperationOutcome,
   type PendingSummary,
+  type Proposal,
 } from "@/lib/chat/protocol"
 import { commandSuggestions, demoConversations } from "@/lib/demo-data"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { ChatMessage, Conversation } from "@/lib/types"
-import { newTransactionHref } from "@/routes/paths"
+import type { ChatMessage, Conversation, ProposalStatus } from "@/lib/types"
 
 type PendingReply = { id: string; conversationId: string; text: string }
 
 type Failure = {
+  title?: string
   message: string
   retry: { conversationId: string; content: string } | null
+}
+
+/** Cartões que ainda aguardavam confirmação e deixaram de valer. */
+function settleProposals(
+  messages: ChatMessage[],
+  status: ProposalStatus,
+  keepId: string | null = null,
+): ChatMessage[] {
+  return messages.map((message) =>
+    message.proposalStatus === "pendente" && message.proposal?.id !== keepId
+      ? { ...message, proposalStatus: status }
+      : message,
+  )
+}
+
+function settledStatus(
+  summary: PendingSummary | null,
+  outcome: OperationOutcome | null,
+): ProposalStatus {
+  if (outcome === "registrado") return "confirmada"
+  if (outcome === "cancelado") return "cancelada"
+  return summary ? "substituida" : "expirada"
 }
 
 const CONNECTION_LABEL: Record<ChatConnection, string> = {
@@ -48,7 +75,7 @@ function newClientId(prefix: string) {
 }
 
 export function AssistantPage() {
-  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const chat = useChatSocket()
   const [conversations, setConversations] = useState(demoConversations)
   const [activeId, setActiveId] = useState(demoConversations[0].id)
@@ -61,6 +88,7 @@ export function AssistantPage() {
     Record<string, PendingSummary | null>
   >({})
   const [cancelling, setCancelling] = useState(false)
+  const [confirming, setConfirming] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const active =
@@ -144,6 +172,44 @@ export function AssistantPage() {
       })
     }
 
+    // A proposta vai para a resposta que a trouxe; um cartão anterior que
+    // deixou de valer diz por quê, para o usuário não confirmar dado velho.
+    const end = (
+      summary: PendingSummary | null,
+      outcome: OperationOutcome | null,
+    ) => {
+      setPending(null)
+      const proposal = summary?.proposal ?? null
+      updateConversation(conversationId, (conversation) => {
+        const shown = conversation.messages.some(
+          (message) => proposal && message.proposal?.id === proposal.id,
+        )
+        const messages = settleProposals(
+          conversation.messages,
+          settledStatus(summary, outcome),
+          proposal?.id ?? null,
+        )
+        if (!reply) return { ...conversation, messages }
+        return {
+          ...conversation,
+          updatedAt: new Date().toISOString(),
+          messages: [
+            ...messages,
+            {
+              id,
+              role: "assistant",
+              content: reply,
+              ...(proposal && !shown
+                ? { proposal, proposalStatus: "pendente" as const }
+                : {}),
+            },
+          ],
+        }
+      })
+      setOperations((current) => ({ ...current, [conversationId]: summary }))
+      if (outcome === "registrado") void invalidateFinancialData(queryClient)
+    }
+
     const refused = await chat.send(
       { id, conversationId, content },
       {
@@ -153,13 +219,7 @@ export function AssistantPage() {
             current?.id === id ? { ...current, text: reply } : current,
           )
         },
-        onEnd: (summary) => {
-          finish(false)
-          setOperations((current) => ({
-            ...current,
-            [conversationId]: summary,
-          }))
-        },
+        onEnd: end,
         onError: (error) => {
           finish(true)
           if (error.code !== "cancelado") {
@@ -175,43 +235,118 @@ export function AssistantPage() {
     }
   }
 
+  /** Encerra a operação na tela e registra a resposta do assistente. */
+  function closeOperation(
+    conversationId: string,
+    status: ProposalStatus,
+    reply: string,
+  ) {
+    setOperations((current) => ({ ...current, [conversationId]: null }))
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      messages: settleProposals(conversation.messages, status),
+    }))
+    appendMessage(conversationId, {
+      id: newClientId("m"),
+      role: "assistant",
+      content: reply,
+    })
+  }
+
+  /** Lançamento que o servidor já não tem: o cartão sai de circulação. */
+  function operationFailed(
+    conversationId: string,
+    failure: ChatFailure,
+    title: string,
+  ) {
+    if (failure.code === "operacao_inexistente") {
+      setOperations((current) => ({ ...current, [conversationId]: null }))
+      updateConversation(conversationId, (conversation) => ({
+        ...conversation,
+        messages: settleProposals(conversation.messages, "expirada"),
+      }))
+    }
+    setFailure({ title, message: failure.message, retry: null })
+  }
+
   async function cancelOperation() {
     const conversationId = active.id
     setCancelling(true)
     const result = await chat.cancelOperation(conversationId)
     setCancelling(false)
 
-    if (typeof result !== "string") {
-      setFailure({ message: result.message, retry: null })
+    if (!result.ok) {
+      setFailure({
+        title: "Não foi possível cancelar o lançamento",
+        message: result.message,
+        retry: null,
+      })
       return
     }
-    setOperations((current) => ({ ...current, [conversationId]: null }))
-    appendMessage(conversationId, {
-      id: newClientId("m"),
-      role: "assistant",
-      content: result,
-    })
+    closeOperation(conversationId, "cancelada", result.reply)
   }
 
-  function resolveProposal(
+  async function confirmProposal(messageId: string, proposal: Proposal) {
+    const conversationId = active.id
+    setFailure(null)
+    setConfirming(messageId)
+    const result = await chat.confirmOperation(conversationId, proposal.id)
+    setConfirming(null)
+
+    if (!result.ok) {
+      operationFailed(
+        conversationId,
+        result,
+        "Não foi possível registrar o lançamento",
+      )
+      return
+    }
+    closeOperation(conversationId, "confirmada", result.reply)
+    void invalidateFinancialData(queryClient)
+  }
+
+  /**
+   * A falha volta ao formulário do cartão como `ApiError`, para ele marcar
+   * cada campo reprovado como faz com a resposta da API REST.
+   */
+  async function editProposal(
     messageId: string,
-    status: "confirmada" | "cancelada",
-  ) {
-    updateConversation(active.id, (conversation) => ({
+    proposal: Proposal,
+    input: CreateTransactionInput,
+  ): Promise<Proposal> {
+    const conversationId = active.id
+    const result = await chat.editOperation(conversationId, proposal.id, input)
+    const updated = result.ok ? result.pending.proposal : null
+
+    if (!result.ok || !updated) {
+      const failure = result.ok ? NOT_CONNECTED : result
+      if (failure.code === "operacao_inexistente") {
+        operationFailed(
+          conversationId,
+          failure,
+          "Não foi possível salvar as alterações",
+        )
+      }
+      throw new ApiError({
+        kind: "http",
+        message: failure.message,
+        fieldErrors: failure.fieldErrors,
+      })
+    }
+
+    updateConversation(conversationId, (conversation) => ({
       ...conversation,
       messages: conversation.messages.map((message) =>
         message.id === messageId
-          ? { ...message, proposalStatus: status }
+          ? { ...message, proposal: updated, proposalEdited: true }
           : message,
       ),
     }))
-
-    if (status === "confirmada") {
-      toast.success("Lançamento registrado", {
-        description:
-          "A gravação real usará o mesmo serviço do formulário, no backend.",
-      })
-    }
+    setOperations((current) => ({
+      ...current,
+      [conversationId]: result.pending,
+    }))
+    return updated
   }
 
   return (
@@ -289,9 +424,15 @@ export function AssistantPage() {
                   <MessageBubble
                     key={message.id}
                     message={message}
-                    onConfirm={() => resolveProposal(message.id, "confirmada")}
-                    onCancel={() => resolveProposal(message.id, "cancelada")}
-                    onEdit={() => navigate(newTransactionHref)}
+                    busy={pending !== null || cancelling || confirming !== null}
+                    confirming={confirming === message.id}
+                    onConfirm={(proposal) =>
+                      void confirmProposal(message.id, proposal)
+                    }
+                    onCancel={() => void cancelOperation()}
+                    onEdit={(proposal, input) =>
+                      editProposal(message.id, proposal, input)
+                    }
                   />
                 ))}
 
@@ -325,7 +466,9 @@ export function AssistantPage() {
             {failure && (
               <Alert variant="destructive">
                 <CircleAlert />
-                <AlertTitle>Não foi possível obter a resposta</AlertTitle>
+                <AlertTitle>
+                  {failure.title ?? "Não foi possível obter a resposta"}
+                </AlertTitle>
                 <AlertDescription className="space-y-3">
                   <p>{failure.message}</p>
                   {failure.retry && (
@@ -349,7 +492,7 @@ export function AssistantPage() {
             {operation && (
               <OperationStatus
                 operation={operation}
-                disabled={pending !== null || cancelling}
+                disabled={pending !== null || cancelling || confirming !== null}
                 onCancel={() => void cancelOperation()}
               />
             )}
@@ -491,13 +634,20 @@ function AssistantLabel() {
 
 function MessageBubble({
   message,
+  busy,
+  confirming,
   onConfirm,
   onEdit,
   onCancel,
 }: {
   message: ChatMessage
-  onConfirm: () => void
-  onEdit: () => void
+  busy: boolean
+  confirming: boolean
+  onConfirm: (proposal: Proposal) => void
+  onEdit: (
+    proposal: Proposal,
+    input: CreateTransactionInput,
+  ) => Promise<Proposal>
   onCancel: () => void
 }) {
   if (message.role === "user") {
@@ -523,12 +673,16 @@ function MessageBubble({
             Resposta interrompida.
           </p>
         )}
-        <ProposalCard
-          message={message}
-          onConfirm={onConfirm}
-          onEdit={onEdit}
-          onCancel={onCancel}
-        />
+        {message.proposal && (
+          <ProposalCard
+            message={message}
+            busy={busy}
+            confirming={confirming}
+            onConfirm={() => onConfirm(message.proposal!)}
+            onEdit={(input) => onEdit(message.proposal!, input)}
+            onCancel={onCancel}
+          />
+        )}
       </div>
     </div>
   )
