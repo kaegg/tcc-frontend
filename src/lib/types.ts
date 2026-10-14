@@ -52,6 +52,8 @@ export type ChatMessage = {
   /** Presente quando a mensagem do assistente propõe um lançamento. */
   proposal?: TransactionProposal
   proposalStatus?: "pendente" | "confirmada" | "cancelada"
+  /** Resposta cortada por cancelamento ou falha no meio da geração. */
+  interrupted?: boolean
 }
 
 export type Conversation = {
