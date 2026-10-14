@@ -5,7 +5,7 @@ on:
     branches: ["**"]
   pull_request:
 
-# Na main nao cancela: interromperia um deploy em andamento.
+# Na main nao cancela: interromperia a publicacao da imagem.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -79,35 +79,3 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
-  deploy:
-    name: Deploy
-    needs: publicar
-    # DEPLOY_ENABLED (variavel do repositorio) liga o deploy e serve de pausa,
-    # por exemplo durante as sessoes do estudo de usabilidade.
-    if: vars.DEPLOY_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: deploy-producao
-      cancel-in-progress: false
-    env:
-      TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
-      SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-
-    steps:
-      # known_hosts vem de segredo, nunca de ssh-keyscan no runner: aceitar a
-      # chave que o host apresentar abriria espaco para um servidor falso.
-      - name: Configurar SSH
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-
-      # O compose e o deploy.sh vivem no repositorio do backend; o deploy dele
-      # os mantem atualizados no servidor. Aqui so o container `web` muda.
-      - name: Atualizar frontend
-        run: ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$TARGET" "sh '$DEPLOY_PATH/deploy.sh' web"

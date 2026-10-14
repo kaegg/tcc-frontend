@@ -121,5 +121,5 @@ npm run preview   # serve o build de produção localmente
 ## Produção
 
 A cada push na `main`, o CI publica a imagem `ghcr.io/kaegg/tcc-frontend` (bundle servido pelo Caddy, ver
-`Caddyfile`) e, com o deploy ligado, atualiza só o container do frontend no servidor. O compose e o passo a passo
-ficam no repositório do backend, em `deploy/README.md`.
+`Caddyfile`). O servidor confere a `latest` a cada 5 minutos e atualiza sozinho o container do frontend. O compose,
+o script de atualização automática e o passo a passo ficam no repositório do backend, em `deploy/README.md`.
