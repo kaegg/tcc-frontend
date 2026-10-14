@@ -33,12 +33,6 @@ export const categories: Category[] = [
   { id: "investimentos", name: "Investimentos", type: "receita" },
 ]
 
-export const categoryById = new Map(categories.map((c) => [c.id, c]))
-
-export function categoryName(id: string) {
-  return categoryById.get(id)?.name ?? "Sem categoria"
-}
-
 export const transactions: Transaction[] = [
   {
     id: "t01",
@@ -218,14 +212,6 @@ export const demoConversations: Conversation[] = [
         role: "assistant",
         content:
           "Identifiquei uma despesa de R$ 35,00 em Alimentação para hoje. Confere os dados antes de eu registrar?",
-        proposal: {
-          type: "despesa",
-          amount: 35,
-          categoryId: "alimentacao",
-          date: "2026-08-16",
-          description: "Almoço",
-        },
-        proposalStatus: "pendente",
       },
     ],
   },

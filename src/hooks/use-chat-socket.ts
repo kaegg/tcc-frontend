@@ -3,6 +3,7 @@ import { io, type Socket } from "socket.io-client"
 
 import { refreshSession } from "@/lib/api/auth-session"
 import { getAccessToken } from "@/lib/api/auth-token"
+import type { CreateTransactionInput } from "@/lib/api/transactions"
 import { markSessionExpired } from "@/lib/api/session-store"
 import {
   ACK_TIMEOUT,
@@ -14,6 +15,9 @@ import {
   type ChatFailure,
   type ReplyChunk,
   type CancelOperationAck,
+  type ConfirmOperationAck,
+  type EditOperationAck,
+  type OperationOutcome,
   type PendingSummary,
   type ReplyEnd,
   type ReplyError,
@@ -26,7 +30,10 @@ export type ChatConnection = "conectando" | "conectado" | "desconectado"
 
 export type ReplyHandlers = {
   onChunk: (text: string) => void
-  onEnd: (pending: PendingSummary | null) => void
+  onEnd: (
+    pending: PendingSummary | null,
+    outcome: OperationOutcome | null,
+  ) => void
   onError: (failure: ChatFailure) => void
 }
 
@@ -99,10 +106,10 @@ export function useChatSocket() {
     socket.on(ChatEvent.chunk, ({ id, text }: ReplyChunk) =>
       handlers.current.get(id)?.onChunk(text),
     )
-    socket.on(ChatEvent.end, ({ id, pending }: ReplyEnd) => {
+    socket.on(ChatEvent.end, ({ id, pending, outcome }: ReplyEnd) => {
       const reply = handlers.current.get(id)
       handlers.current.delete(id)
-      reply?.onEnd(pending ?? null)
+      reply?.onEnd(pending ?? null, outcome ?? null)
     })
     socket.on(ChatEvent.error, ({ id, code, message }: ReplyError) =>
       fail(id, { code, message }),
@@ -161,23 +168,56 @@ export function useChatSocket() {
     socketRef.current?.emit(ChatEvent.cancel, { id })
   }, [])
 
-  /** Descarta o lançamento em andamento; devolve a resposta do assistente. */
-  const cancelOperation = useCallback(
-    async (conversationId: string): Promise<string | ChatFailure> => {
+  const request = useCallback(
+    async <T extends { ok: boolean }>(
+      event: string,
+      payload: object,
+    ): Promise<T | ({ ok: false } & ChatFailure)> => {
       const socket = socketRef.current
-      if (!socket?.connected) return NOT_CONNECTED
+      if (!socket?.connected) return { ok: false, ...NOT_CONNECTED }
       try {
-        const ack = (await socket
+        return (await socket
           .timeout(ACK_TIMEOUT_MS)
-          .emitWithAck(ChatEvent.cancelOperation, {
-            conversationId,
-          })) as CancelOperationAck
-        return ack.ok ? ack.reply : { code: ack.code, message: ack.message }
+          .emitWithAck(event, payload)) as T
       } catch {
-        return ACK_TIMEOUT
+        return { ok: false, ...ACK_TIMEOUT }
       }
     },
     [],
+  )
+
+  /** Descarta o lançamento em andamento; devolve a resposta do assistente. */
+  const cancelOperation = useCallback(
+    (conversationId: string) =>
+      request<CancelOperationAck>(ChatEvent.cancelOperation, {
+        conversationId,
+      }),
+    [request],
+  )
+
+  /** Registra a proposta na versão que o cartão mostra. */
+  const confirmOperation = useCallback(
+    (conversationId: string, proposalId: string) =>
+      request<ConfirmOperationAck>(ChatEvent.confirmOperation, {
+        conversationId,
+        proposalId,
+      }),
+    [request],
+  )
+
+  /** Troca os dados da proposta; ela continua aguardando confirmação. */
+  const editOperation = useCallback(
+    (
+      conversationId: string,
+      proposalId: string,
+      values: CreateTransactionInput,
+    ) =>
+      request<EditOperationAck>(ChatEvent.editOperation, {
+        conversationId,
+        proposalId,
+        values,
+      }),
+    [request],
   )
 
   const reconnect = useCallback(() => {
@@ -185,7 +225,15 @@ export function useChatSocket() {
     socketRef.current?.connect()
   }, [])
 
-  return { status, send, cancel, cancelOperation, reconnect }
+  return {
+    status,
+    send,
+    cancel,
+    cancelOperation,
+    confirmOperation,
+    editOperation,
+    reconnect,
+  }
 }
 
 function connected(socket: Socket): Promise<boolean> {
