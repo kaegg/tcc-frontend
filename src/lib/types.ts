@@ -11,7 +11,7 @@
  */
 
 import type { TransactionType } from "@/lib/api/schemas"
-import type { Proposal } from "@/lib/chat/protocol"
+import type { Proposal, ReportPeriodRef } from "@/lib/chat/protocol"
 
 export type { Category, TransactionType } from "@/lib/api/schemas"
 
@@ -54,6 +54,8 @@ export type ChatMessage = {
   proposalStatus?: ProposalStatus
   /** O usuário corrigiu os dados no próprio cartão. */
   proposalEdited?: boolean
+  /** Período de uma consulta respondida; a resposta leva ao mesmo relatório. */
+  report?: ReportPeriodRef
   /** Resposta cortada por cancelamento ou falha no meio da geração. */
   interrupted?: boolean
 }

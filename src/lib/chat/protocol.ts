@@ -61,10 +61,14 @@ export type PendingSummary = {
 /** O que a mensagem fez com o lançamento pendente, quando o encerrou. */
 export type OperationOutcome = "registrado" | "cancelado"
 
+/** Período de uma consulta respondida, para abrir o mesmo relatório. */
+export type ReportPeriodRef = { from: string; to: string }
+
 export type ReplyEnd = {
   id: string
   pending?: PendingSummary | null
   outcome?: OperationOutcome | null
+  report?: ReportPeriodRef | null
 }
 export type ReplyError = { id: string } & ChatFailure
 

@@ -19,6 +19,7 @@ import {
   type EditOperationAck,
   type OperationOutcome,
   type PendingSummary,
+  type ReportPeriodRef,
   type ReplyEnd,
   type ReplyError,
   type SendMessageAck,
@@ -33,6 +34,7 @@ export type ReplyHandlers = {
   onEnd: (
     pending: PendingSummary | null,
     outcome: OperationOutcome | null,
+    report: ReportPeriodRef | null,
   ) => void
   onError: (failure: ChatFailure) => void
 }
@@ -106,10 +108,10 @@ export function useChatSocket() {
     socket.on(ChatEvent.chunk, ({ id, text }: ReplyChunk) =>
       handlers.current.get(id)?.onChunk(text),
     )
-    socket.on(ChatEvent.end, ({ id, pending, outcome }: ReplyEnd) => {
+    socket.on(ChatEvent.end, ({ id, pending, outcome, report }: ReplyEnd) => {
       const reply = handlers.current.get(id)
       handlers.current.delete(id)
-      reply?.onEnd(pending ?? null, outcome ?? null)
+      reply?.onEnd(pending ?? null, outcome ?? null, report ?? null)
     })
     socket.on(ChatEvent.error, ({ id, code, message }: ReplyError) =>
       fail(id, { code, message }),

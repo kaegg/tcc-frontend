@@ -603,3 +603,57 @@ describe("AssistantPage — confirmação de lançamento (TCC-026)", () => {
     expect(screen.getAllByRole("button", { name: "Confirmar" })).toHaveLength(1)
   })
 })
+
+describe("AssistantPage — consulta de relatórios (TCC-027)", () => {
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+  })
+
+  it("abre numa conversa vazia, sem valores de demonstração", async () => {
+    await abrir()
+
+    expect(screen.getByText("Nenhuma conversa iniciada")).toBeInTheDocument()
+    expect(screen.queryByText(/R\$ 160,00/)).not.toBeInTheDocument()
+  })
+
+  it("a resposta leva ao relatório do mesmo período", async () => {
+    await abrir()
+    await escrever("quanto gastei em setembro?")
+    const [{ id }] = enviadas()
+
+    act(() =>
+      fake.fire("reply:chunk", {
+        id,
+        text: "Em setembro de 2026 (01/09/2026 a 30/09/2026), suas despesas somaram R$ 350,00.",
+      }),
+    )
+    act(() =>
+      fake.fire("reply:end", {
+        id,
+        pending: null,
+        outcome: null,
+        report: { from: "2026-09-01", to: "2026-09-30" },
+      }),
+    )
+
+    expect(
+      screen.getByRole("link", { name: "Ver no relatório" }),
+    ).toHaveAttribute("href", "/relatorios?from=2026-09-01&to=2026-09-30")
+  })
+
+  it("resposta que não é consulta não mostra o link", async () => {
+    await abrir()
+    await escrever("oi")
+    const [{ id }] = enviadas()
+
+    act(() => fake.fire("reply:chunk", { id, text: "Olá!" }))
+    act(() => fake.fire("reply:end", { id, pending: null, report: null }))
+
+    expect(
+      screen.queryByRole("link", { name: "Ver no relatório" }),
+    ).not.toBeInTheDocument()
+  })
+})
