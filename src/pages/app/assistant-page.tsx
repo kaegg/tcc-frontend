@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
+import { Link } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import {
+  ChartColumn,
   CircleAlert,
   MessageSquarePlus,
   RefreshCw,
@@ -28,11 +30,13 @@ import {
   type OperationOutcome,
   type PendingSummary,
   type Proposal,
+  type ReportPeriodRef,
 } from "@/lib/chat/protocol"
-import { commandSuggestions, demoConversations } from "@/lib/demo-data"
+import { commandSuggestions } from "@/lib/demo-data"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation, ProposalStatus } from "@/lib/types"
+import { paths } from "@/routes/paths"
 
 type PendingReply = { id: string; conversationId: string; text: string }
 
@@ -74,11 +78,26 @@ function newClientId(prefix: string) {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
 
+function emptyConversation(): Conversation {
+  return {
+    id: newClientId("c"),
+    title: "Nova conversa",
+    updatedAt: new Date().toISOString(),
+    messages: [],
+  }
+}
+
+function reportHref({ from, to }: ReportPeriodRef) {
+  return `${paths.app.reports}?${new URLSearchParams({ from, to })}`
+}
+
 export function AssistantPage() {
   const queryClient = useQueryClient()
   const chat = useChatSocket()
-  const [conversations, setConversations] = useState(demoConversations)
-  const [activeId, setActiveId] = useState(demoConversations[0].id)
+  const [conversations, setConversations] = useState(() => [
+    emptyConversation(),
+  ])
+  const [activeId, setActiveId] = useState(conversations[0].id)
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState<PendingReply | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -124,12 +143,7 @@ export function AssistantPage() {
   }
 
   function newConversation() {
-    const conversation: Conversation = {
-      id: newClientId("c"),
-      title: "Nova conversa",
-      updatedAt: new Date().toISOString(),
-      messages: [],
-    }
+    const conversation = emptyConversation()
     setConversations((items) => [conversation, ...items])
     setActiveId(conversation.id)
     setFailure(null)
@@ -177,6 +191,7 @@ export function AssistantPage() {
     const end = (
       summary: PendingSummary | null,
       outcome: OperationOutcome | null,
+      report: ReportPeriodRef | null,
     ) => {
       setPending(null)
       const proposal = summary?.proposal ?? null
@@ -199,6 +214,7 @@ export function AssistantPage() {
               id,
               role: "assistant",
               content: reply,
+              ...(report ? { report } : {}),
               ...(proposal && !shown
                 ? { proposal, proposalStatus: "pendente" as const }
                 : {}),
@@ -672,6 +688,15 @@ function MessageBubble({
           <p className="mt-1 text-xs text-muted-foreground">
             Resposta interrompida.
           </p>
+        )}
+        {message.report && (
+          <Link
+            to={reportHref(message.report)}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-ai-accent underline underline-offset-3"
+          >
+            <ChartColumn className="size-3.5" aria-hidden="true" />
+            Ver no relatório
+          </Link>
         )}
         {message.proposal && (
           <ProposalCard

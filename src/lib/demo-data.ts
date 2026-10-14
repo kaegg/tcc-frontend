@@ -1,10 +1,4 @@
-import type {
-  Category,
-  Conversation,
-  MonthlyPoint,
-  Transaction,
-  User,
-} from "@/lib/types"
+import type { Category, MonthlyPoint, Transaction, User } from "@/lib/types"
 
 /**
  * Dados de demonstração das telas navegáveis.
@@ -196,66 +190,9 @@ export const monthlySeries: MonthlyPoint[] = [
   { month: "Ago", receitas: 5580, despesas: 2209 },
 ]
 
-export const demoConversations: Conversation[] = [
-  {
-    id: "c1",
-    title: "Almoço de hoje",
-    updatedAt: "2026-08-16T12:41:00",
-    messages: [
-      {
-        id: "m1",
-        role: "user",
-        content: "Gastei R$ 35 com almoço hoje",
-      },
-      {
-        id: "m2",
-        role: "assistant",
-        content:
-          "Identifiquei uma despesa de R$ 35,00 em Alimentação para hoje. Confere os dados antes de eu registrar?",
-      },
-    ],
-  },
-  {
-    id: "c2",
-    title: "Gastos com transporte",
-    updatedAt: "2026-08-12T08:20:00",
-    messages: [
-      {
-        id: "m3",
-        role: "user",
-        content: "Quanto gastei com transporte este mês?",
-      },
-      {
-        id: "m4",
-        role: "assistant",
-        content:
-          "Em agosto de 2026 você registrou R$ 160,00 em Transporte, distribuídos em 1 lançamento. No mês anterior o total havia sido R$ 42,80.",
-      },
-    ],
-  },
-  {
-    id: "c3",
-    title: "Resumo de julho",
-    updatedAt: "2026-07-31T20:05:00",
-    messages: [
-      {
-        id: "m5",
-        role: "user",
-        content: "Mostre meu resumo financeiro de julho",
-      },
-      {
-        id: "m6",
-        role: "assistant",
-        content:
-          "Em julho de 2026 suas receitas somaram R$ 4.980,00 e suas despesas R$ 3.505,00, resultando em um saldo positivo de R$ 1.475,00.",
-      },
-    ],
-  },
-]
-
 export const commandSuggestions = [
   "Cadastre uma despesa de R$ 50 com mercado ontem",
   "Quanto gastei este mês?",
-  "Mostre meu resumo financeiro",
+  "Mostre o resumo deste mês",
   "Quanto economizei este mês?",
 ]
