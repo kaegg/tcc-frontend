@@ -138,7 +138,9 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
 
     const log = screen.getByRole("log", { name: "Mensagens da conversa" })
     expect(within(log).getByText("oi")).toBeInTheDocument()
-    expect(within(log).getByText("Pensando…")).toBeInTheDocument()
+    expect(
+      within(log).getByText("Interpretando sua mensagem…"),
+    ).toBeInTheDocument()
 
     const [{ id }] = enviadas()
     act(() => fake.fire("reply:chunk", { id, text: "Olá" }))
@@ -148,7 +150,9 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
     act(() => fake.fire("reply:end", { id }))
 
     expect(within(log).getByText("Olá, tudo bem?")).toBeInTheDocument()
-    expect(within(log).queryByText("Pensando…")).not.toBeInTheDocument()
+    expect(
+      within(log).queryByText("Interpretando sua mensagem…"),
+    ).not.toBeInTheDocument()
   })
 
   it("permite parar a resposta e guarda o que já tinha chegado", async () => {
@@ -216,7 +220,9 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
         "Muitas mensagens em pouco tempo. Aguarde um instante.",
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByText("Pensando…")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Interpretando sua mensagem…"),
+    ).not.toBeInTheDocument()
   })
 
   it("informa a queda da conexão durante a resposta e oferece reconectar", async () => {
@@ -414,7 +420,7 @@ describe("AssistantPage — confirmação de lançamento (TCC-026)", () => {
   }
 
   const cartao = () =>
-    screen.getByText("Proposta de lançamento").parentElement!
+    screen.getByText("Proposta de lançamento sugerida pela IA").parentElement!
       .parentElement as HTMLElement
 
   it("mostra no cartão todos os dados que serão gravados", async () => {
@@ -655,5 +661,127 @@ describe("AssistantPage — consulta de relatórios (TCC-027)", () => {
     expect(
       screen.queryByRole("link", { name: "Ver no relatório" }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe("AssistantPage — respostas padronizadas e ajuda (TCC-028)", () => {
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+  })
+
+  async function responder(texto: string, kind: string | null) {
+    await abrir()
+    await escrever("mensagem")
+    const [{ id }] = enviadas()
+    act(() => fake.fire("reply:chunk", { id, text: texto }))
+    act(() => fake.fire("reply:end", { id, pending: null, kind }))
+  }
+
+  it.each([
+    ["pergunta", "Precisa da sua resposta"],
+    ["sucesso", "Concluído"],
+    ["erro", "Não concluído"],
+  ])("marca a resposta do tipo %s em texto", async (kind, rotulo) => {
+    await responder("Resposta.", kind)
+
+    const log = screen.getByRole("log", { name: "Mensagens da conversa" })
+    expect(within(log).getByText(rotulo)).toBeInTheDocument()
+  })
+
+  it("ajuda e avisos não levam marca de estado", async () => {
+    await responder("Posso registrar receitas e despesas.", "informacao")
+
+    const log = screen.getByRole("log", { name: "Mensagens da conversa" })
+    for (const rotulo of [
+      "Precisa da sua resposta",
+      "Concluído",
+      "Não concluído",
+    ]) {
+      expect(within(log).queryByText(rotulo)).not.toBeInTheDocument()
+    }
+  })
+
+  it("identifica as mensagens do assistente como IA e explica o que vem dos dados", async () => {
+    await responder("Resposta.", null)
+
+    const log = screen.getByRole("log", { name: "Mensagens da conversa" })
+    expect(within(log).getByText("Assistente IA")).toBeInTheDocument()
+    expect(
+      screen.getByText(/A IA interpreta suas mensagens e pode se enganar/),
+    ).toBeInTheDocument()
+  })
+
+  it("a confirmação pelo botão aparece como concluída", async () => {
+    await abrir()
+    const user = await escrever("gastei 45 no mercado ontem")
+    const [{ id }] = enviadas()
+    act(() => fake.fire("reply:chunk", { id, text: "Entendi." }))
+    act(() =>
+      fake.fire("reply:end", {
+        id,
+        kind: "confirmacao",
+        pending: {
+          missing: [],
+          ready: true,
+          proposal: {
+            id: "p1",
+            type: "despesa",
+            amount: "45.00",
+            categoryId: "c1",
+            categoryName: "Alimentação",
+            date: "2026-10-13",
+            description: null,
+            dateDefaulted: false,
+          },
+        },
+      }),
+    )
+    expect(screen.queryByText("Concluído")).not.toBeInTheDocument()
+    fake.acks.push({ ok: true, reply: "Pronto, registrei." })
+
+    await user.click(screen.getByRole("button", { name: "Confirmar" }))
+
+    expect(await screen.findByText("Concluído")).toBeInTheDocument()
+  })
+
+  it("a conversa vazia sugere despesa, receita e relatório", async () => {
+    await abrir()
+
+    for (const sugestao of [
+      "Gastei 45 reais no mercado ontem",
+      "Recebi 3.000 de salário dia 5",
+      "Quanto gastei este mês?",
+    ]) {
+      expect(screen.getByRole("button", { name: sugestao })).toBeInTheDocument()
+    }
+  })
+
+  it("os exemplos ficam disponíveis a qualquer momento e preenchem o campo sem enviar", async () => {
+    await abrir()
+    const user = userEvent.setup()
+
+    await user.click(
+      screen.getByRole("button", { name: "Exemplos de mensagens" }),
+    )
+    const menu = await screen.findByRole("menu")
+    expect(within(menu).getByText("Despesa")).toBeInTheDocument()
+    expect(within(menu).getByText("Receita")).toBeInTheDocument()
+    expect(within(menu).getByText("Relatório")).toBeInTheDocument()
+
+    await user.click(
+      within(menu).getByRole("menuitem", {
+        name: "“recebi 3.000 de salário dia 5”",
+      }),
+    )
+
+    const campo = screen.getByRole("textbox", {
+      name: "Mensagem para o assistente",
+    })
+    expect(campo).toHaveValue("recebi 3.000 de salário dia 5")
+    await waitFor(() => expect(campo).toHaveFocus())
+    expect(enviadas()).toHaveLength(0)
   })
 })

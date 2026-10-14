@@ -11,7 +11,7 @@
  */
 
 import type { TransactionType } from "@/lib/api/schemas"
-import type { Proposal, ReportPeriodRef } from "@/lib/chat/protocol"
+import type { Proposal, ReplyKind, ReportPeriodRef } from "@/lib/chat/protocol"
 
 export type { Category, TransactionType } from "@/lib/api/schemas"
 
@@ -56,6 +56,8 @@ export type ChatMessage = {
   proposalEdited?: boolean
   /** Período de uma consulta respondida; a resposta leva ao mesmo relatório. */
   report?: ReportPeriodRef
+  /** Pergunta, sucesso, erro…: marcado na mensagem (TCC-028). */
+  kind?: ReplyKind | null
   /** Resposta cortada por cancelamento ou falha no meio da geração. */
   interrupted?: boolean
 }

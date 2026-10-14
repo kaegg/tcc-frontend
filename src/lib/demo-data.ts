@@ -189,10 +189,3 @@ export const monthlySeries: MonthlyPoint[] = [
   { month: "Jul", receitas: 4980, despesas: 3505 },
   { month: "Ago", receitas: 5580, despesas: 2209 },
 ]
-
-export const commandSuggestions = [
-  "Cadastre uma despesa de R$ 50 com mercado ontem",
-  "Quanto gastei este mês?",
-  "Mostre o resumo deste mês",
-  "Quanto economizei este mês?",
-]

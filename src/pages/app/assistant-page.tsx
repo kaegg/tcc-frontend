@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type RefObject } from "react"
 import { Link } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import {
   ChartColumn,
+  CircleCheck,
+  Lightbulb,
+  MessageCircleQuestion,
   CircleAlert,
   MessageSquarePlus,
   RefreshCw,
@@ -14,12 +17,26 @@ import {
 
 import { ProposalCard } from "@/components/app/proposal-card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { useChatSocket, type ChatConnection } from "@/hooks/use-chat-socket"
+import {
+  useChatSocket,
+  type ChatConnection,
+  type ReplyEndInfo,
+} from "@/hooks/use-chat-socket"
 import { ApiError } from "@/lib/api/errors"
 import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { CreateTransactionInput } from "@/lib/api/transactions"
@@ -30,9 +47,10 @@ import {
   type OperationOutcome,
   type PendingSummary,
   type Proposal,
+  type ReplyKind,
   type ReportPeriodRef,
 } from "@/lib/chat/protocol"
-import { commandSuggestions } from "@/lib/demo-data"
+import { EXAMPLE_GROUPS, STARTER_SUGGESTIONS } from "@/lib/chat/examples"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation, ProposalStatus } from "@/lib/types"
@@ -109,6 +127,7 @@ export function AssistantPage() {
   const [cancelling, setCancelling] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const active =
     conversations.find((item) => item.id === activeId) ?? conversations[0]
@@ -188,11 +207,7 @@ export function AssistantPage() {
 
     // A proposta vai para a resposta que a trouxe; um cartão anterior que
     // deixou de valer diz por quê, para o usuário não confirmar dado velho.
-    const end = (
-      summary: PendingSummary | null,
-      outcome: OperationOutcome | null,
-      report: ReportPeriodRef | null,
-    ) => {
+    const end = ({ pending: summary, outcome, report, kind }: ReplyEndInfo) => {
       setPending(null)
       const proposal = summary?.proposal ?? null
       updateConversation(conversationId, (conversation) => {
@@ -214,6 +229,7 @@ export function AssistantPage() {
               id,
               role: "assistant",
               content: reply,
+              kind,
               ...(report ? { report } : {}),
               ...(proposal && !shown
                 ? { proposal, proposalStatus: "pendente" as const }
@@ -256,6 +272,7 @@ export function AssistantPage() {
     conversationId: string,
     status: ProposalStatus,
     reply: string,
+    kind: ReplyKind,
   ) {
     setOperations((current) => ({ ...current, [conversationId]: null }))
     updateConversation(conversationId, (conversation) => ({
@@ -266,6 +283,7 @@ export function AssistantPage() {
       id: newClientId("m"),
       role: "assistant",
       content: reply,
+      kind,
     })
   }
 
@@ -299,7 +317,7 @@ export function AssistantPage() {
       })
       return
     }
-    closeOperation(conversationId, "cancelada", result.reply)
+    closeOperation(conversationId, "cancelada", result.reply, "informacao")
   }
 
   async function confirmProposal(messageId: string, proposal: Proposal) {
@@ -317,7 +335,7 @@ export function AssistantPage() {
       )
       return
     }
-    closeOperation(conversationId, "confirmada", result.reply)
+    closeOperation(conversationId, "confirmada", result.reply, "sucesso")
     void invalidateFinancialData(queryClient)
   }
 
@@ -374,8 +392,8 @@ export function AssistantPage() {
           </h1>
           <p className="text-sm text-pretty text-muted-foreground">
             Registre lançamentos e consulte seus dados escrevendo em linguagem
-            natural. As respostas são geradas por IA e nada é gravado sem sua
-            confirmação.
+            natural. Uma IA interpreta o que você escreve, e nada é gravado sem
+            sua confirmação.
           </p>
         </div>
         <Button variant="outline" className="h-9" onClick={newConversation}>
@@ -459,7 +477,7 @@ export function AssistantPage() {
                       <p className="whitespace-pre-wrap">
                         {streaming === "" ? (
                           <span className="text-muted-foreground">
-                            Pensando…
+                            Interpretando sua mensagem…
                           </span>
                         ) : (
                           streaming
@@ -520,7 +538,9 @@ export function AssistantPage() {
               }}
               className="flex items-end gap-2"
             >
+              <ExamplesMenu onPick={setDraft} composer={composerRef} />
               <Textarea
+                ref={composerRef}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -557,8 +577,16 @@ export function AssistantPage() {
               )}
             </form>
 
-            <p className="text-xs text-muted-foreground">
-              Conteúdo gerado por IA. Confirme antes de registrar.
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Sparkles
+                className="mt-0.5 size-3 shrink-0 text-ai-accent"
+                aria-hidden="true"
+              />
+              <span>
+                A IA interpreta suas mensagens e pode se enganar. Valores e
+                totais vêm dos seus registros, e nada é gravado sem sua
+                confirmação.
+              </span>
             </p>
           </div>
         </Card>
@@ -639,12 +667,97 @@ function ConnectionStatus({
   )
 }
 
-function AssistantLabel() {
+/**
+ * Pergunta, sucesso e erro ficam marcados em texto e ícone, nunca só por cor.
+ * A confirmação pendente é marcada no cartão da proposta, que acompanha o
+ * estado dela (registrada, cancelada…); ajuda e avisos não levam marca.
+ */
+const KIND_BADGE: Partial<
+  Record<
+    ReplyKind,
+    { label: string; icon: typeof CircleCheck; className: string }
+  >
+> = {
+  pergunta: {
+    label: "Precisa da sua resposta",
+    icon: MessageCircleQuestion,
+    className: "border-ai/30 text-ai-accent",
+  },
+  sucesso: {
+    label: "Concluído",
+    icon: CircleCheck,
+    className: "border-success/30 bg-success/10 text-success",
+  },
+  erro: {
+    label: "Não concluído",
+    icon: CircleAlert,
+    className: "border-destructive/30 text-destructive",
+  },
+}
+
+function AssistantLabel({ kind }: { kind?: ReplyKind | null }) {
+  const badge = kind ? KIND_BADGE[kind] : undefined
   return (
-    <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ai-accent">
+    <span className="mb-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ai-accent">
       <Sparkles className="size-3" aria-hidden="true" />
-      Assistente
+      Assistente IA
+      {badge && (
+        <Badge variant="outline" className={badge.className}>
+          <badge.icon aria-hidden="true" />
+          {badge.label}
+        </Badge>
+      )}
     </span>
+  )
+}
+
+/**
+ * Ajuda contextual (RF28): exemplos de cada tarefa, a qualquer momento da
+ * conversa. Escolher um exemplo preenche o campo, e não envia: o usuário
+ * adapta valor, data e categoria antes.
+ */
+function ExamplesMenu({
+  onPick,
+  composer,
+}: {
+  onPick: (text: string) => void
+  composer: RefObject<HTMLTextAreaElement | null>
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-lg"
+            variant="outline"
+            aria-label="Exemplos de mensagens"
+          />
+        }
+      >
+        <Lightbulb />
+      </DropdownMenuTrigger>
+      {/* Ao fechar, o foco vai para o campo, e não de volta ao botão: o
+          próximo passo é ajustar o exemplo e enviar. */}
+      <DropdownMenuContent side="top" className="w-80" finalFocus={composer}>
+        {EXAMPLE_GROUPS.map((group, index) => (
+          <DropdownMenuGroup key={group.label}>
+            {index > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+            {group.examples.map((example) => (
+              <DropdownMenuItem key={example} onClick={() => onPick(example)}>
+                “{example}”
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+        <DropdownMenuSeparator />
+        <p className="px-1.5 py-1 text-xs text-muted-foreground">
+          Antes de gravar, o assistente mostra os dados para você confirmar.
+          Para desistir, diga “cancelar”.
+        </p>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -681,7 +794,7 @@ function MessageBubble({
 
   return (
     <div className="max-w-[85%]">
-      <AssistantLabel />
+      <AssistantLabel kind={message.proposal ? null : message.kind} />
       <div className="rounded-xl rounded-bl-sm bg-muted/60 px-3 py-2 text-sm">
         <p className="whitespace-pre-wrap">{message.content}</p>
         {message.interrupted && (
@@ -724,11 +837,12 @@ function EmptyConversation({ onPick }: { onPick: (text: string) => void }) {
           Nenhuma conversa iniciada
         </p>
         <p className="text-sm text-muted-foreground">
-          Escreva o que aconteceu ou comece por uma sugestão.
+          Escreva o que aconteceu ou comece por uma sugestão. O botão de lâmpada
+          mostra mais exemplos.
         </p>
       </div>
       <ul className="flex flex-wrap justify-center gap-2">
-        {commandSuggestions.map((suggestion) => (
+        {STARTER_SUGGESTIONS.map((suggestion) => (
           <li key={suggestion}>
             <Button
               variant="outline"

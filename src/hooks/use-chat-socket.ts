@@ -19,6 +19,7 @@ import {
   type EditOperationAck,
   type OperationOutcome,
   type PendingSummary,
+  type ReplyKind,
   type ReportPeriodRef,
   type ReplyEnd,
   type ReplyError,
@@ -29,13 +30,17 @@ import { apiBaseUrl } from "@/lib/env"
 
 export type ChatConnection = "conectando" | "conectado" | "desconectado"
 
+/** O fim da resposta, com o que ela fez e o que ela é. */
+export type ReplyEndInfo = {
+  pending: PendingSummary | null
+  outcome: OperationOutcome | null
+  report: ReportPeriodRef | null
+  kind: ReplyKind | null
+}
+
 export type ReplyHandlers = {
   onChunk: (text: string) => void
-  onEnd: (
-    pending: PendingSummary | null,
-    outcome: OperationOutcome | null,
-    report: ReportPeriodRef | null,
-  ) => void
+  onEnd: (end: ReplyEndInfo) => void
   onError: (failure: ChatFailure) => void
 }
 
@@ -108,11 +113,19 @@ export function useChatSocket() {
     socket.on(ChatEvent.chunk, ({ id, text }: ReplyChunk) =>
       handlers.current.get(id)?.onChunk(text),
     )
-    socket.on(ChatEvent.end, ({ id, pending, outcome, report }: ReplyEnd) => {
-      const reply = handlers.current.get(id)
-      handlers.current.delete(id)
-      reply?.onEnd(pending ?? null, outcome ?? null, report ?? null)
-    })
+    socket.on(
+      ChatEvent.end,
+      ({ id, pending, outcome, report, kind }: ReplyEnd) => {
+        const reply = handlers.current.get(id)
+        handlers.current.delete(id)
+        reply?.onEnd({
+          pending: pending ?? null,
+          outcome: outcome ?? null,
+          report: report ?? null,
+          kind: kind ?? null,
+        })
+      },
+    )
     socket.on(ChatEvent.error, ({ id, code, message }: ReplyError) =>
       fail(id, { code, message }),
     )
