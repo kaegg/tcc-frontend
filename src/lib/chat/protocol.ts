@@ -8,6 +8,7 @@ export const ChatEvent = {
   chunk: "reply:chunk",
   end: "reply:end",
   error: "reply:error",
+  cancelOperation: "operation:cancel",
 } as const
 
 export const MAX_MESSAGE_CHARS = 2000
@@ -23,8 +24,14 @@ export type SendMessagePayload = {
 export type SendMessageAck = { ok: true } | ({ ok: false } & ChatFailure)
 
 export type ReplyChunk = { id: string; text: string }
-export type ReplyEnd = { id: string }
+/** Lançamento sendo preenchido na conversa, depois da resposta. */
+export type PendingSummary = { missing: string[]; ready: boolean }
+
+export type ReplyEnd = { id: string; pending?: PendingSummary | null }
 export type ReplyError = { id: string } & ChatFailure
+
+export type CancelOperationAck =
+  { ok: true; reply: string } | ({ ok: false } & ChatFailure)
 
 export const CONNECTION_LOST: ChatFailure = {
   code: "desconectado",
