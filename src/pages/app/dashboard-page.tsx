@@ -208,7 +208,10 @@ export function DashboardPage() {
             <div className="mt-3 px-6">
               <Link
                 to={`${paths.app.transactions}?${monthQuery}`}
-                className={cn(buttonVariants({ variant: "ghost" }), "h-9")}
+                className={cn(
+                  buttonVariants({ variant: "ghost" }),
+                  "h-auto min-h-9 max-w-full whitespace-normal",
+                )}
               >
                 Ver todos os lançamentos do mês
                 <ArrowRight />

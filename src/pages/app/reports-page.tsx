@@ -287,7 +287,7 @@ function Overview({
         </p>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <IncomeExpenseChart
           months={data.months}
           totals={{ income: data.income, expense: data.expense }}
@@ -295,7 +295,7 @@ function Overview({
         <BalanceChart months={data.months} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="lg:col-span-2">
           <CategoryDistribution data={data} />
         </div>

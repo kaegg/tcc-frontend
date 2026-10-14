@@ -353,13 +353,13 @@ export function TransactionsPage() {
           {meta && meta.totalPages > 1 ? (
             <nav
               aria-label="Paginação dos lançamentos"
-              className="mt-4 flex items-center justify-between gap-3 px-6"
+              className="mt-4 flex flex-wrap items-center justify-between gap-3 px-6"
             >
               <p aria-live="polite" className="text-sm text-muted-foreground">
                 Página {meta.page} de {meta.totalPages} · {meta.total}{" "}
                 lançamentos
               </p>
-              <div className="flex gap-2">
+              <div className="ml-auto flex gap-2">
                 <Button
                   variant="outline"
                   className="h-8"
