@@ -64,11 +64,19 @@ export type OperationOutcome = "registrado" | "cancelado"
 /** Período de uma consulta respondida, para abrir o mesmo relatório. */
 export type ReportPeriodRef = { from: string; to: string }
 
+/**
+ * O que a resposta é para o usuário; a interface marca cada tipo de forma
+ * distinta. Espelha `src/chat/replies.ts` do backend.
+ */
+export type ReplyKind =
+  "pergunta" | "confirmacao" | "sucesso" | "erro" | "informacao"
+
 export type ReplyEnd = {
   id: string
   pending?: PendingSummary | null
   outcome?: OperationOutcome | null
   report?: ReportPeriodRef | null
+  kind?: ReplyKind | null
 }
 export type ReplyError = { id: string } & ChatFailure
 

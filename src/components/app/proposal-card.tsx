@@ -45,7 +45,9 @@ export function ProposalCard({
     <div className="mt-3 rounded-xl border border-ai/25 bg-background/60 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">
-          {editing && pending ? "Editar proposta" : "Proposta de lançamento"}
+          {editing && pending
+            ? "Editar proposta"
+            : "Proposta de lançamento sugerida pela IA"}
         </span>
         <StatusBadge status={proposalStatus} />
       </div>
