@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Square,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -16,109 +17,151 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { useChatSocket, type ChatConnection } from "@/hooks/use-chat-socket"
+import { MAX_MESSAGE_CHARS, NOT_CONNECTED } from "@/lib/chat/protocol"
 import { commandSuggestions, demoConversations } from "@/lib/demo-data"
 import { formatDateTime } from "@/lib/format"
-import { ASSISTANT_UNAVAILABLE_MESSAGE } from "@/lib/pending-backend"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation } from "@/lib/types"
 import { newTransactionHref } from "@/routes/paths"
 
-/** Resposta encenada do assistente. Enquanto o gateway Socket.IO e o Ollama não
- *  existem, o texto é digitado caractere a caractere para que
- *  o comportamento de streaming já esteja representado. */
-const STAGED_REPLY =
-  "Entendi que você quer registrar uma despesa. Separei os dados abaixo — confira antes de eu gravar."
+type PendingReply = { id: string; conversationId: string; text: string }
+
+type Failure = {
+  message: string
+  retry: { conversationId: string; content: string } | null
+}
+
+const CONNECTION_LABEL: Record<ChatConnection, string> = {
+  conectado: "Conectado ao assistente",
+  conectando: "Conectando ao assistente…",
+  desconectado: "Sem conexão com o assistente",
+}
+
+function newClientId(prefix: string) {
+  return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+}
 
 export function AssistantPage() {
   const navigate = useNavigate()
+  const chat = useChatSocket()
   const [conversations, setConversations] = useState(demoConversations)
   const [activeId, setActiveId] = useState(demoConversations[0].id)
   const [draft, setDraft] = useState("")
-  const [streaming, setStreaming] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
+  const [pending, setPending] = useState<PendingReply | null>(null)
+  const [failure, setFailure] = useState<Failure | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const active =
     conversations.find((item) => item.id === activeId) ?? conversations[0]
+  const streaming = pending?.conversationId === active.id ? pending.text : null
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [active.messages.length, streaming])
 
-  function updateActive(update: (conversation: Conversation) => Conversation) {
+  // A resposta chega depois e pode pertencer a uma conversa que já não está
+  // aberta; por isso as atualizações são pelo id, não pela conversa ativa.
+  function updateConversation(
+    id: string,
+    update: (conversation: Conversation) => Conversation,
+  ) {
     setConversations((items) =>
-      items.map((item) => (item.id === active.id ? update(item) : item)),
+      items.map((item) => (item.id === id ? update(item) : item)),
     )
+  }
+
+  function appendMessage(conversationId: string, message: ChatMessage) {
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      title:
+        conversation.messages.length === 0 && message.role === "user"
+          ? message.content.slice(0, 40)
+          : conversation.title,
+      updatedAt: new Date().toISOString(),
+      messages: [...conversation.messages, message],
+    }))
   }
 
   function newConversation() {
     const conversation: Conversation = {
-      id: `c${Date.now()}`,
+      id: newClientId("c"),
       title: "Nova conversa",
       updatedAt: new Date().toISOString(),
       messages: [],
     }
     setConversations((items) => [conversation, ...items])
     setActiveId(conversation.id)
-    setFailed(false)
+    setFailure(null)
   }
 
-  async function send(text: string) {
+  async function send(text: string, retryIn?: string) {
     const content = text.trim()
-    if (!content || streaming !== null) return
+    if (!content || pending !== null) return
 
-    setDraft("")
-    setFailed(false)
+    const conversationId = retryIn ?? active.id
+    const retry = { conversationId, content }
 
-    const userMessage: ChatMessage = {
-      id: `m${Date.now()}`,
-      role: "user",
-      content,
-    }
-    updateActive((conversation) => ({
-      ...conversation,
-      title:
-        conversation.messages.length === 0
-          ? content.slice(0, 40)
-          : conversation.title,
-      updatedAt: new Date().toISOString(),
-      messages: [...conversation.messages, userMessage],
-    }))
-
-    // Streaming encenado: um caractere por vez, como o token a token do modelo.
-    setStreaming("")
-    for (let i = 1; i <= STAGED_REPLY.length; i += 2) {
-      await new Promise((resolve) => setTimeout(resolve, 14))
-      setStreaming(STAGED_REPLY.slice(0, i))
+    if (chat.status !== "conectado") {
+      setFailure({ message: NOT_CONNECTED.message, retry: null })
+      return
     }
 
-    const reply: ChatMessage = {
-      id: `m${Date.now() + 1}`,
-      role: "assistant",
-      content: STAGED_REPLY,
-      proposal: {
-        type: "despesa",
-        amount: 35,
-        categoryId: "alimentacao",
-        date: "2026-08-16",
-        description: content,
+    setFailure(null)
+    if (!retryIn) {
+      setDraft("")
+      appendMessage(conversationId, {
+        id: newClientId("m"),
+        role: "user",
+        content,
+      })
+    }
+
+    const id = newClientId("r")
+    let reply = ""
+    setPending({ id, conversationId, text: "" })
+
+    const finish = (interrupted: boolean) => {
+      setPending(null)
+      if (!reply) return
+      appendMessage(conversationId, {
+        id,
+        role: "assistant",
+        content: reply,
+        interrupted,
+      })
+    }
+
+    const refused = await chat.send(
+      { id, conversationId, content },
+      {
+        onChunk: (chunk) => {
+          reply += chunk
+          setPending((current) =>
+            current?.id === id ? { ...current, text: reply } : current,
+          )
+        },
+        onEnd: () => finish(false),
+        onError: (error) => {
+          finish(true)
+          if (error.code !== "cancelado") {
+            setFailure({ message: error.message, retry })
+          }
+        },
       },
-      proposalStatus: "pendente",
-    }
+    )
 
-    setStreaming(null)
-    updateActive((conversation) => ({
-      ...conversation,
-      updatedAt: new Date().toISOString(),
-      messages: [...conversation.messages, reply],
-    }))
+    if (refused) {
+      setPending(null)
+      setFailure({ message: refused.message, retry })
+    }
   }
 
   function resolveProposal(
     messageId: string,
     status: "confirmada" | "cancelada",
   ) {
-    updateActive((conversation) => ({
+    updateConversation(active.id, (conversation) => ({
       ...conversation,
       messages: conversation.messages.map((message) =>
         message.id === messageId
@@ -190,11 +233,22 @@ export function AssistantPage() {
 
         {/* Painel direito: conversa */}
         <Card className="flex h-[32rem] flex-col">
+          <ConnectionStatus status={chat.status} onReconnect={chat.reconnect} />
+          <Separator />
+
           <ScrollArea ref={scrollRef} className="flex-1 px-4">
             {active.messages.length === 0 && streaming === null ? (
-              <EmptyConversation onPick={send} />
+              <EmptyConversation onPick={(text) => void send(text)} />
             ) : (
-              <div className="space-y-4 py-4">
+              // `log` anuncia ao leitor de tela cada mensagem concluída. O
+              // texto em geração fica fora do anúncio: mudaria a cada token.
+              <div
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Mensagens da conversa"
+                className="space-y-4 py-4"
+              >
                 {active.messages.map((message) => (
                   <MessageBubble
                     key={message.id}
@@ -206,12 +260,21 @@ export function AssistantPage() {
                 ))}
 
                 {streaming !== null && (
-                  <div className="max-w-[85%]">
+                  <div className="max-w-[85%]" aria-busy="true">
                     <AssistantLabel />
                     <div className="rounded-xl rounded-bl-sm bg-muted/60 px-3 py-2 text-sm">
-                      <p aria-live="polite">
-                        {streaming}
-                        <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-ai-accent align-text-bottom" />
+                      <p className="whitespace-pre-wrap">
+                        {streaming === "" ? (
+                          <span className="text-muted-foreground">
+                            Pensando…
+                          </span>
+                        ) : (
+                          streaming
+                        )}
+                        <span
+                          aria-hidden="true"
+                          className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-ai-accent align-text-bottom"
+                        />
                       </p>
                     </div>
                   </div>
@@ -223,20 +286,26 @@ export function AssistantPage() {
           <Separator />
 
           <div className="space-y-3 p-4">
-            {failed && (
+            {failure && (
               <Alert variant="destructive">
                 <CircleAlert />
-                <AlertTitle>Falha ao conectar com o assistente</AlertTitle>
+                <AlertTitle>Não foi possível obter a resposta</AlertTitle>
                 <AlertDescription className="space-y-3">
-                  <p>{ASSISTANT_UNAVAILABLE_MESSAGE}</p>
-                  <Button
-                    variant="outline"
-                    className="h-8"
-                    onClick={() => setFailed(false)}
-                  >
-                    <RefreshCw />
-                    Tentar novamente
-                  </Button>
+                  <p>{failure.message}</p>
+                  {failure.retry && (
+                    <Button
+                      variant="outline"
+                      className="h-8"
+                      disabled={chat.status !== "conectado"}
+                      onClick={() => {
+                        const { content, conversationId } = failure.retry!
+                        void send(content, conversationId)
+                      }}
+                    >
+                      <RefreshCw />
+                      Tentar novamente
+                    </Button>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
@@ -258,35 +327,73 @@ export function AssistantPage() {
                   }
                 }}
                 rows={1}
+                maxLength={MAX_MESSAGE_CHARS}
                 placeholder="Ex.: gastei R$ 35 com almoço hoje"
                 aria-label="Mensagem para o assistente"
                 className="max-h-32 min-h-10 resize-none"
               />
-              <Button
-                type="submit"
-                size="icon-lg"
-                aria-label="Enviar mensagem"
-                disabled={draft.trim() === "" || streaming !== null}
-              >
-                <Send />
-              </Button>
+              {pending ? (
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="outline"
+                  aria-label="Parar resposta"
+                  onClick={() => chat.cancel(pending.id)}
+                >
+                  <Square />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon-lg"
+                  aria-label="Enviar mensagem"
+                  disabled={draft.trim() === "" || chat.status !== "conectado"}
+                >
+                  <Send />
+                </Button>
+              )}
             </form>
 
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                Conteúdo gerado por IA. Confirme antes de registrar.
-              </p>
-              <Button
-                variant="ghost"
-                className="h-7 text-xs"
-                onClick={() => setFailed(true)}
-              >
-                Simular falha
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Conteúdo gerado por IA. Confirme antes de registrar.
+            </p>
           </div>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function ConnectionStatus({
+  status,
+  onReconnect,
+}: {
+  status: ChatConnection
+  onReconnect: () => void
+}) {
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3 px-4 py-2">
+      <p
+        role="status"
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-2 rounded-full",
+            status === "conectado" && "bg-success",
+            status === "conectando" && "animate-pulse bg-muted-foreground",
+            status === "desconectado" && "bg-destructive",
+          )}
+        />
+        {CONNECTION_LABEL[status]}
+      </p>
+      {status === "desconectado" && (
+        <Button variant="ghost" className="h-7 text-xs" onClick={onReconnect}>
+          <RefreshCw />
+          Reconectar
+        </Button>
+      )}
     </div>
   )
 }
@@ -328,7 +435,12 @@ function MessageBubble({
     <div className="max-w-[85%]">
       <AssistantLabel />
       <div className="rounded-xl rounded-bl-sm bg-muted/60 px-3 py-2 text-sm">
-        <p>{message.content}</p>
+        <p className="whitespace-pre-wrap">{message.content}</p>
+        {message.interrupted && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Resposta interrompida.
+          </p>
+        )}
         <ProposalCard
           message={message}
           onConfirm={onConfirm}
