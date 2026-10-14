@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AssistantPage } from "@/pages/app/assistant-page"
 
 type Handler = (...args: unknown[]) => void
-type Ack = { ok: true } | { ok: false; code: string; message: string }
+type Ack =
+  { ok: true; reply?: string } | { ok: false; code: string; message: string }
 
 /** Dublê do socket do Socket.IO com só o que o hook usa. */
 class FakeSocket {
@@ -81,7 +82,14 @@ let fake: FakeSocket
 function enviadas() {
   return fake.sent
     .filter((item) => item.event === "message:send")
-    .map((item) => item.payload as { id: string; content: string })
+    .map(
+      (item) =>
+        item.payload as {
+          id: string
+          content: string
+          conversationId: string
+        },
+    )
 }
 
 async function abrir() {
@@ -264,5 +272,72 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
 
     await waitFor(() => expect(refreshSession).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(fake.connects).toBe(2))
+  })
+})
+
+describe("AssistantPage — lançamento em andamento (TCC-025)", () => {
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+  })
+
+  async function responderComPendencia(pending: unknown) {
+    await abrir()
+    const user = await escrever("gastei no mercado")
+    const [{ id }] = enviadas()
+    act(() => fake.fire("reply:chunk", { id, text: "Qual foi o valor?" }))
+    act(() => fake.fire("reply:end", { id, pending }))
+    return user
+  }
+
+  it("mostra o que falta no lançamento em andamento", async () => {
+    await responderComPendencia({ missing: ["valor"], ready: false })
+
+    expect(screen.getByText("Lançamento em andamento")).toBeInTheDocument()
+    expect(screen.getByText(/falta valor/)).toBeInTheDocument()
+  })
+
+  it("avisa quando os dados estão completos", async () => {
+    await responderComPendencia({ missing: [], ready: true })
+
+    expect(
+      screen.getByText(/dados completos, confira antes de registrar/),
+    ).toBeInTheDocument()
+  })
+
+  it("não mostra o aviso sem lançamento em andamento", async () => {
+    await responderComPendencia(null)
+
+    expect(
+      screen.queryByText("Lançamento em andamento"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("cancela pelo botão e mostra a confirmação do assistente", async () => {
+    const user = await responderComPendencia({
+      missing: ["valor"],
+      ready: false,
+    })
+    fake.acks.push({
+      ok: true,
+      reply:
+        "Tudo bem, cancelei o lançamento em andamento. Nada foi registrado.",
+    })
+
+    await user.click(
+      screen.getByRole("button", { name: "Cancelar lançamento" }),
+    )
+
+    const pedido = fake.sent.at(-1)
+    expect(pedido?.event).toBe("operation:cancel")
+    expect(pedido?.payload).toEqual({
+      conversationId: enviadas()[0].conversationId,
+    })
+    expect(await screen.findByText(/Nada foi registrado/)).toBeInTheDocument()
+    expect(
+      screen.queryByText("Lançamento em andamento"),
+    ).not.toBeInTheDocument()
   })
 })

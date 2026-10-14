@@ -7,6 +7,7 @@ import {
   Send,
   Sparkles,
   Square,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -18,7 +19,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useChatSocket, type ChatConnection } from "@/hooks/use-chat-socket"
-import { MAX_MESSAGE_CHARS, NOT_CONNECTED } from "@/lib/chat/protocol"
+import {
+  MAX_MESSAGE_CHARS,
+  NOT_CONNECTED,
+  type PendingSummary,
+} from "@/lib/chat/protocol"
 import { commandSuggestions, demoConversations } from "@/lib/demo-data"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -50,11 +55,18 @@ export function AssistantPage() {
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState<PendingReply | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
+  // Lançamento sendo preenchido em cada conversa, como o servidor informou no
+  // fim da última resposta.
+  const [operations, setOperations] = useState<
+    Record<string, PendingSummary | null>
+  >({})
+  const [cancelling, setCancelling] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const active =
     conversations.find((item) => item.id === activeId) ?? conversations[0]
   const streaming = pending?.conversationId === active.id ? pending.text : null
+  const operation = operations[active.id] ?? null
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -141,7 +153,13 @@ export function AssistantPage() {
             current?.id === id ? { ...current, text: reply } : current,
           )
         },
-        onEnd: () => finish(false),
+        onEnd: (summary) => {
+          finish(false)
+          setOperations((current) => ({
+            ...current,
+            [conversationId]: summary,
+          }))
+        },
         onError: (error) => {
           finish(true)
           if (error.code !== "cancelado") {
@@ -155,6 +173,24 @@ export function AssistantPage() {
       setPending(null)
       setFailure({ message: refused.message, retry })
     }
+  }
+
+  async function cancelOperation() {
+    const conversationId = active.id
+    setCancelling(true)
+    const result = await chat.cancelOperation(conversationId)
+    setCancelling(false)
+
+    if (typeof result !== "string") {
+      setFailure({ message: result.message, retry: null })
+      return
+    }
+    setOperations((current) => ({ ...current, [conversationId]: null }))
+    appendMessage(conversationId, {
+      id: newClientId("m"),
+      role: "assistant",
+      content: result,
+    })
   }
 
   function resolveProposal(
@@ -310,6 +346,14 @@ export function AssistantPage() {
               </Alert>
             )}
 
+            {operation && (
+              <OperationStatus
+                operation={operation}
+                disabled={pending !== null || cancelling}
+                onCancel={() => void cancelOperation()}
+              />
+            )}
+
             <form
               onSubmit={(event) => {
                 event.preventDefault()
@@ -360,6 +404,44 @@ export function AssistantPage() {
           </div>
         </Card>
       </div>
+    </div>
+  )
+}
+
+/**
+ * O usuário vê que há um lançamento esperando resposta e pode desistir dele
+ * sem precisar saber que "cancelar" também funciona por texto.
+ */
+function OperationStatus({
+  operation,
+  disabled,
+  onCancel,
+}: {
+  operation: PendingSummary
+  disabled: boolean
+  onCancel: () => void
+}) {
+  const detail = operation.ready
+    ? "dados completos, confira antes de registrar"
+    : `falta ${operation.missing.join(" e ")}`
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ai/25 bg-ai/5 px-3 py-2">
+      <p role="status" className="text-xs">
+        <span className="font-medium text-ai-accent">
+          Lançamento em andamento
+        </span>
+        <span className="text-muted-foreground"> · {detail}</span>
+      </p>
+      <Button
+        variant="ghost"
+        className="h-7 text-xs"
+        disabled={disabled}
+        onClick={onCancel}
+      >
+        <X />
+        Cancelar lançamento
+      </Button>
     </div>
   )
 }

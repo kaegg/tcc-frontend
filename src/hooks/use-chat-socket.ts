@@ -13,6 +13,8 @@ import {
   socketUrl,
   type ChatFailure,
   type ReplyChunk,
+  type CancelOperationAck,
+  type PendingSummary,
   type ReplyEnd,
   type ReplyError,
   type SendMessageAck,
@@ -24,7 +26,7 @@ export type ChatConnection = "conectando" | "conectado" | "desconectado"
 
 export type ReplyHandlers = {
   onChunk: (text: string) => void
-  onEnd: () => void
+  onEnd: (pending: PendingSummary | null) => void
   onError: (failure: ChatFailure) => void
 }
 
@@ -97,10 +99,10 @@ export function useChatSocket() {
     socket.on(ChatEvent.chunk, ({ id, text }: ReplyChunk) =>
       handlers.current.get(id)?.onChunk(text),
     )
-    socket.on(ChatEvent.end, ({ id }: ReplyEnd) => {
+    socket.on(ChatEvent.end, ({ id, pending }: ReplyEnd) => {
       const reply = handlers.current.get(id)
       handlers.current.delete(id)
-      reply?.onEnd()
+      reply?.onEnd(pending ?? null)
     })
     socket.on(ChatEvent.error, ({ id, code, message }: ReplyError) =>
       fail(id, { code, message }),
@@ -159,12 +161,31 @@ export function useChatSocket() {
     socketRef.current?.emit(ChatEvent.cancel, { id })
   }, [])
 
+  /** Descarta o lançamento em andamento; devolve a resposta do assistente. */
+  const cancelOperation = useCallback(
+    async (conversationId: string): Promise<string | ChatFailure> => {
+      const socket = socketRef.current
+      if (!socket?.connected) return NOT_CONNECTED
+      try {
+        const ack = (await socket
+          .timeout(ACK_TIMEOUT_MS)
+          .emitWithAck(ChatEvent.cancelOperation, {
+            conversationId,
+          })) as CancelOperationAck
+        return ack.ok ? ack.reply : { code: ack.code, message: ack.message }
+      } catch {
+        return ACK_TIMEOUT
+      }
+    },
+    [],
+  )
+
   const reconnect = useCallback(() => {
     setStatus("conectando")
     socketRef.current?.connect()
   }, [])
 
-  return { status, send, cancel, reconnect }
+  return { status, send, cancel, cancelOperation, reconnect }
 }
 
 function connected(socket: Socket): Promise<boolean> {
