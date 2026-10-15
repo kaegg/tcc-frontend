@@ -7,6 +7,8 @@ export type CreateUserInput = {
   name: string
   email: string
   password: string
+  /** Aceite dos Termos de Uso; o backend recusa a conta sem ele. */
+  acceptTerms: true
 }
 
 /**

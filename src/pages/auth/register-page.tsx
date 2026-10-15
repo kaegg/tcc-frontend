@@ -24,7 +24,12 @@ import { registerSchema, type RegisterValues } from "@/pages/auth/auth-schemas"
 import { paths } from "@/routes/paths"
 
 /** Campos do formulário que o backend também conhece pelo nome. */
-const CAMPOS_DO_FORMULARIO = ["name", "email", "password"] as const
+const CAMPOS_DO_FORMULARIO = [
+  "name",
+  "email",
+  "password",
+  "acceptTerms",
+] as const
 
 type CampoDoFormulario = (typeof CAMPOS_DO_FORMULARIO)[number]
 
@@ -47,6 +52,8 @@ export function RegisterPage() {
       email: "",
       password: "",
       passwordConfirmation: "",
+      // Desmarcado: o aceite precisa ser um ato do usuário.
+      acceptTerms: false as unknown as true,
     },
   })
 
@@ -76,6 +83,7 @@ export function RegisterPage() {
       name: values.name,
       email: values.email,
       password: values.password,
+      acceptTerms: values.acceptTerms,
     })
   }
 
@@ -174,6 +182,33 @@ export function RegisterPage() {
               id="passwordConfirmation-error"
               errors={[errors.passwordConfirmation]}
             />
+          </Field>
+
+          <Field data-invalid={Boolean(errors.acceptTerms)}>
+            <div className="flex items-start gap-2.5">
+              <input
+                id="acceptTerms"
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+                aria-invalid={Boolean(errors.acceptTerms)}
+                aria-describedby={
+                  errors.acceptTerms ? "acceptTerms-error" : undefined
+                }
+                {...register("acceptTerms")}
+              />
+              <FieldLabel htmlFor="acceptTerms" className="font-normal">
+                Li e aceito os{" "}
+                <Link
+                  to={paths.public.terms}
+                  target="_blank"
+                  rel="noopener"
+                  className="underline underline-offset-3"
+                >
+                  Termos de Uso
+                </Link>
+              </FieldLabel>
+            </div>
+            <FieldError id="acceptTerms-error" errors={[errors.acceptTerms]} />
           </Field>
 
           <Button

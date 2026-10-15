@@ -37,8 +37,10 @@ import {
   type ChatConnection,
   type ReplyEndInfo,
 } from "@/hooks/use-chat-socket"
+import { useMetrics } from "@/hooks/use-metrics"
 import { ApiError } from "@/lib/api/errors"
 import { invalidateFinancialData } from "@/lib/api/invalidate"
+import type { MetricTask } from "@/lib/api/metrics"
 import type { CreateTransactionInput } from "@/lib/api/transactions"
 import {
   MAX_MESSAGE_CHARS,
@@ -52,6 +54,7 @@ import {
 } from "@/lib/chat/protocol"
 import { EXAMPLE_GROUPS, STARTER_SUGGESTIONS } from "@/lib/chat/examples"
 import { formatDateTime } from "@/lib/format"
+import type { MetricFlow } from "@/lib/metrics/context"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation, ProposalStatus } from "@/lib/types"
 import { paths } from "@/routes/paths"
@@ -105,6 +108,17 @@ function emptyConversation(): Conversation {
   }
 }
 
+/** Instante da mensagem, no mesmo relógio que a coleta usa para a duração. */
+const now = () => performance.now()
+
+const ASSISTANT_FLOWS: MetricFlow[] = [
+  "assistente-registro",
+  "assistente-consulta",
+]
+
+const registrationTask = (type: string | null): MetricTask =>
+  type === "despesa" || type === "receita" ? `registro-${type}` : "registro"
+
 function reportHref({ from, to }: ReportPeriodRef) {
   return `${paths.app.reports}?${new URLSearchParams({ from, to })}`
 }
@@ -112,6 +126,9 @@ function reportHref({ from, to }: ReportPeriodRef) {
 export function AssistantPage() {
   const queryClient = useQueryClient()
   const chat = useChatSocket()
+  const metrics = useMetrics()
+  // Tipo da última proposta, para nomear a tarefa quando ela é registrada.
+  const proposalType = useRef<string | null>(null)
   const [conversations, setConversations] = useState(() => [
     emptyConversation(),
   ])
@@ -176,10 +193,12 @@ export function AssistantPage() {
     const retry = { conversationId, content }
 
     if (chat.status !== "conectado") {
+      measureError()
       setFailure({ message: NOT_CONNECTED.message, retry: null })
       return
     }
 
+    const sentAt = now()
     setFailure(null)
     if (!retryIn) {
       setDraft("")
@@ -207,8 +226,10 @@ export function AssistantPage() {
 
     // A proposta vai para a resposta que a trouxe; um cartão anterior que
     // deixou de valer diz por quê, para o usuário não confirmar dado velho.
-    const end = ({ pending: summary, outcome, report, kind }: ReplyEndInfo) => {
+    const end = (info: ReplyEndInfo) => {
+      const { pending: summary, outcome, report, kind } = info
       setPending(null)
+      measureReply(info, sentAt)
       const proposal = summary?.proposal ?? null
       updateConversation(conversationId, (conversation) => {
         const shown = conversation.messages.some(
@@ -255,6 +276,7 @@ export function AssistantPage() {
         onError: (error) => {
           finish(true)
           if (error.code !== "cancelado") {
+            measureError()
             setFailure({ message: error.message, retry })
           }
         },
@@ -263,9 +285,68 @@ export function AssistantPage() {
 
     if (refused) {
       setPending(null)
+      measureError()
       setFailure({ message: refused.message, retry })
     }
   }
+
+  /**
+   * Métrica do assistente (TCC-030): o esforço são as mensagens. O servidor
+   * diz a que tarefa cada resposta pertence; a tarefa começa na mensagem que a
+   * abriu e termina ao registrar o lançamento ou ao exibir o relatório.
+   * Mensagem fora de tarefa (ajuda, outro assunto) conta para a que estiver
+   * em andamento.
+   */
+  function measureReply(info: ReplyEndInfo, sentAt: number) {
+    const flow: MetricFlow | null =
+      info.flow === "registro"
+        ? "assistente-registro"
+        : info.flow === "consulta"
+          ? "assistente-consulta"
+          : null
+    const targets = flow ? [flow] : ASSISTANT_FLOWS.filter(metrics.isActive)
+    if (flow) metrics.start(flow, sentAt)
+    for (const target of targets) {
+      metrics.interaction(target)
+      if (info.kind === "erro") metrics.error(target)
+    }
+
+    if (info.pending?.proposal)
+      proposalType.current = info.pending.proposal.type
+    if (info.outcome) {
+      metrics.finish(
+        "assistente-registro",
+        info.outcome === "registrado" ? "concluida" : "interrompida",
+        registrationTask(proposalType.current),
+      )
+      proposalType.current = null
+    }
+    if (info.flow === "consulta" && info.report) {
+      metrics.finish("assistente-consulta", "concluida", "consulta")
+    }
+  }
+
+  function measureError() {
+    for (const flow of ASSISTANT_FLOWS.filter(metrics.isActive)) {
+      metrics.error(flow)
+    }
+  }
+
+  // Sair do assistente no meio de uma tarefa a encerra sem conclusão.
+  useEffect(
+    () => () => {
+      for (const flow of ASSISTANT_FLOWS) {
+        metrics.finish(
+          flow,
+          "interrompida",
+          flow === "assistente-consulta"
+            ? "consulta"
+            : registrationTask(proposalType.current),
+        )
+      }
+    },
+    [metrics],
+  )
 
   /** Encerra a operação na tela e registra a resposta do assistente. */
   function closeOperation(
@@ -293,7 +374,13 @@ export function AssistantPage() {
     failure: ChatFailure,
     title: string,
   ) {
+    measureError()
     if (failure.code === "operacao_inexistente") {
+      metrics.finish(
+        "assistente-registro",
+        "interrompida",
+        registrationTask(proposalType.current),
+      )
       setOperations((current) => ({ ...current, [conversationId]: null }))
       updateConversation(conversationId, (conversation) => ({
         ...conversation,
@@ -317,6 +404,11 @@ export function AssistantPage() {
       })
       return
     }
+    metrics.finish(
+      "assistente-registro",
+      "interrompida",
+      registrationTask(proposalType.current),
+    )
     closeOperation(conversationId, "cancelada", result.reply, "informacao")
   }
 
@@ -335,6 +427,11 @@ export function AssistantPage() {
       )
       return
     }
+    metrics.finish(
+      "assistente-registro",
+      "concluida",
+      registrationTask(proposal.type),
+    )
     closeOperation(conversationId, "confirmada", result.reply, "sucesso")
     void invalidateFinancialData(queryClient)
   }

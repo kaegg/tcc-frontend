@@ -1,4 +1,4 @@
-import type { Category, MonthlyPoint, Transaction, User } from "@/lib/types"
+import type { Category, MonthlyPoint, Transaction } from "@/lib/types"
 
 /**
  * Dados de demonstração das telas navegáveis.
@@ -7,12 +7,6 @@ import type { Category, MonthlyPoint, Transaction, User } from "@/lib/types"
  * antes do backend existir. Serão substituídos pelas consultas à API na
  * integração com o backend.
  */
-
-export const demoUser: User = {
-  name: "Kauan Eguchi",
-  email: "kauan@exemplo.com",
-  initials: "KE",
-}
 
 export const categories: Category[] = [
   { id: "alimentacao", name: "Alimentação", type: "despesa" },

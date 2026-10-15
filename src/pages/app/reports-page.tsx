@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import {
   CircleAlert,
@@ -32,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useMetrics } from "@/hooks/use-metrics"
 import { useReportOverview } from "@/hooks/use-reports"
 import { describeApiError } from "@/lib/api/errors"
 import type { ReportPeriod } from "@/lib/api/reports"
@@ -72,6 +74,26 @@ export function ReportsPage() {
   // Uma consulta alimenta cartões, gráficos e tabela: trocar o período muda
   // todos juntos, e nenhum deles pode mostrar um recorte diferente.
   const query = useReportOverview(period, invalidPeriod === null)
+
+  // Métrica da consulta pelo formulário (TCC-030): do abrir a tela ao sair
+  // dela; conta como concluída se algum relatório foi exibido.
+  const metrics = useMetrics()
+  const shown = useRef(false)
+  useEffect(() => {
+    metrics.start("formulario-consulta")
+    return () =>
+      metrics.finish(
+        "formulario-consulta",
+        shown.current ? "concluida" : "interrompida",
+        "consulta",
+      )
+  }, [metrics])
+  useEffect(() => {
+    if (query.isSuccess) shown.current = true
+  }, [query.isSuccess])
+  useEffect(() => {
+    if (query.isError || invalidPeriod) metrics.error("formulario-consulta")
+  }, [query.isError, invalidPeriod, metrics])
 
   function changePeriod(next: ReportPeriod) {
     setParams(

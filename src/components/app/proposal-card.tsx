@@ -65,6 +65,7 @@ export function ProposalCard({
             save={onEdit}
             onSaved={() => setEditing(false)}
             onCancel={() => setEditing(false)}
+            metricsFlow="assistente-registro"
             submitLabel="Salvar alterações"
             cancelLabel="Cancelar edição"
             errorTitle="Não foi possível salvar as alterações"
