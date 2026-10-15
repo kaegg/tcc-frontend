@@ -72,7 +72,12 @@ const refreshSession = vi.hoisted(() => vi.fn())
 const conversationsApi = vi.hoisted(() => ({
   fetchConversations: vi.fn(),
   fetchConversation: vi.fn(),
+  deleteConversation: vi.fn(),
+  renameConversation: vi.fn(),
 }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+
+vi.mock("sonner", () => ({ toast }))
 
 vi.mock("@/lib/api/conversations", () => conversationsApi)
 
@@ -130,6 +135,10 @@ async function escrever(texto: string) {
 beforeEach(() => {
   conversationsApi.fetchConversations.mockReset().mockResolvedValue([])
   conversationsApi.fetchConversation.mockReset()
+  conversationsApi.deleteConversation.mockReset().mockResolvedValue(null)
+  conversationsApi.renameConversation.mockReset()
+  toast.success.mockReset()
+  toast.error.mockReset()
 })
 
 describe("AssistantPage — gateway do chat (TCC-022)", () => {
@@ -814,7 +823,7 @@ describe("AssistantPage — histórico gravado", () => {
     const recentes = screen.getByRole("list", { name: "Conversas recentes" })
     await user.click(
       await within(recentes).findByRole("button", {
-        name: /Gastei 45 reais no mercado ontem/,
+        name: /^Gastei 45 reais no mercado ontem/,
       }),
     )
 
@@ -922,5 +931,163 @@ describe("AssistantPage — histórico gravado", () => {
     expect(enviadas()[0].conversationId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     )
+  })
+})
+
+describe("AssistantPage — renomear e excluir conversa", () => {
+  const CONVERSA = "0199a1b2-c3d4-7000-8000-0000000000d1"
+  const TITULO = "Gastei 45 reais no mercado ontem"
+
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+    conversationsApi.fetchConversations.mockResolvedValue([
+      { id: CONVERSA, title: TITULO, updatedAt: "2026-10-14T12:00:00.000Z" },
+    ])
+    conversationsApi.fetchConversation.mockResolvedValue({
+      id: CONVERSA,
+      title: TITULO,
+      updatedAt: "2026-10-14T12:00:00.000Z",
+      messages: [
+        { id: "a", role: "user", content: TITULO, kind: null, report: null },
+      ],
+      pending: null,
+    })
+  })
+
+  const recentes = () =>
+    screen.getByRole("list", { name: "Conversas recentes" })
+
+  async function item() {
+    return within(recentes()).findByRole("button", {
+      name: new RegExp(`^${TITULO}`),
+    })
+  }
+
+  async function escolher(acao: string) {
+    const user = userEvent.setup()
+    await user.click(
+      await within(recentes()).findByRole("button", {
+        name: `Ações da conversa “${TITULO}”`,
+      }),
+    )
+    await user.click(await screen.findByRole("menuitem", { name: acao }))
+    return user
+  }
+
+  async function pedirExclusao() {
+    const user = await escolher("Excluir")
+    return { user, dialogo: await screen.findByRole("alertdialog") }
+  }
+
+  it("pede confirmação com o título e só então exclui", async () => {
+    renderizar(`/assistente?conversa=${CONVERSA}`)
+    await screen.findByRole("log", { name: "Mensagens da conversa" })
+
+    const { user, dialogo } = await pedirExclusao()
+    expect(within(dialogo).getByText("Excluir conversa?")).toBeInTheDocument()
+    expect(within(dialogo).getByText(`“${TITULO}”`)).toBeInTheDocument()
+    expect(conversationsApi.deleteConversation).not.toHaveBeenCalled()
+    conversationsApi.fetchConversations.mockResolvedValue([])
+
+    await user.click(within(dialogo).getByRole("button", { name: "Excluir" }))
+
+    expect(conversationsApi.deleteConversation).toHaveBeenCalledWith(CONVERSA)
+    await waitFor(() =>
+      expect(
+        within(recentes()).queryByRole("button", {
+          name: new RegExp(`^${TITULO}`),
+        }),
+      ).not.toBeInTheDocument(),
+    )
+    // A conversa aberta foi excluída: volta ao estado de conversa nova.
+    expect(screen.getByText("Nenhuma conversa iniciada")).toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith(
+      "Conversa excluída",
+      expect.anything(),
+    )
+  })
+
+  it("cancelar no diálogo não exclui", async () => {
+    renderizar()
+    const { user, dialogo } = await pedirExclusao()
+
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }))
+
+    expect(conversationsApi.deleteConversation).not.toHaveBeenCalled()
+    expect(await item()).toBeInTheDocument()
+  })
+
+  it("avisa a falha e mantém a conversa", async () => {
+    conversationsApi.deleteConversation.mockRejectedValue(
+      new ApiError({ kind: "rede", message: "Sem conexão." }),
+    )
+    renderizar()
+    const { user, dialogo } = await pedirExclusao()
+
+    await user.click(within(dialogo).getByRole("button", { name: "Excluir" }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }))
+    expect(await item()).toBeInTheDocument()
+  })
+
+  it("conversa nova, ainda vazia, não tem menu de ações", async () => {
+    renderizar()
+    await item()
+
+    expect(
+      within(recentes()).getAllByRole("button", { name: /^Ações da conversa/ }),
+    ).toHaveLength(1)
+  })
+
+  it("renomeia pelo menu e atualiza a lista", async () => {
+    conversationsApi.renameConversation.mockResolvedValue({
+      id: CONVERSA,
+      title: "Mercado de outubro",
+      updatedAt: "2026-10-15T12:00:00.000Z",
+    })
+    renderizar()
+    const user = await escolher("Renomear")
+    const campo = await screen.findByRole("textbox", { name: "Nome" })
+    expect(campo).toHaveValue(TITULO)
+
+    conversationsApi.fetchConversations.mockResolvedValue([
+      {
+        id: CONVERSA,
+        title: "Mercado de outubro",
+        updatedAt: "2026-10-15T12:00:00.000Z",
+      },
+    ])
+    await user.clear(campo)
+    await user.type(campo, "  Mercado de outubro {Enter}")
+
+    expect(conversationsApi.renameConversation).toHaveBeenCalledWith(
+      CONVERSA,
+      "Mercado de outubro",
+    )
+    expect(
+      await within(recentes()).findByRole("button", {
+        name: /^Mercado de outubro/,
+      }),
+    ).toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith("Conversa renomeada")
+  })
+
+  it("não aceita nome vazio", async () => {
+    renderizar()
+    const user = await escolher("Renomear")
+    const campo = await screen.findByRole("textbox", { name: "Nome" })
+
+    await user.clear(campo)
+    await user.click(screen.getByRole("button", { name: "Salvar" }))
+
+    expect(
+      screen.getByText("Informe um nome de 1 a 120 caracteres."),
+    ).toBeInTheDocument()
+    expect(campo).toHaveAttribute("aria-invalid", "true")
+    expect(conversationsApi.renameConversation).not.toHaveBeenCalled()
   })
 })

@@ -9,13 +9,18 @@ import {
   CircleAlert,
   Loader2,
   MessageSquarePlus,
+  MoreVertical,
+  Pencil,
   RefreshCw,
   Send,
   Sparkles,
   Square,
+  Trash2,
 } from "lucide-react"
 
+import { DeleteConversationDialog } from "@/components/app/delete-conversation-dialog"
 import { ProposalCard } from "@/components/app/proposal-card"
+import { RenameConversationDialog } from "@/components/app/rename-conversation-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -207,6 +212,8 @@ export function AssistantPage() {
   const [failure, setFailure] = useState<Failure | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Conversation | null>(null)
+  const [renaming, setRenaming] = useState<Conversation | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -288,6 +295,27 @@ export function AssistantPage() {
       },
       { replace: true },
     )
+  }
+
+  /** A conversa aberta que some volta ao estado de conversa nova. */
+  function removeConversation(id: string) {
+    const remaining = conversations.filter((item) => item.id !== id)
+    const draft =
+      remaining.find((item) => !item.saved && item.messages.length === 0) ??
+      emptyConversation()
+    setConversations(
+      remaining.includes(draft) ? remaining : [draft, ...remaining],
+    )
+    setLoading((current) => {
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+    if (active.id === id) {
+      setActiveId(draft.id)
+      setFailure(null)
+      linkConversation(null)
+    }
   }
 
   function selectConversation(conversation: Conversation) {
@@ -669,31 +697,93 @@ export function AssistantPage() {
               aria-labelledby="recent-conversations"
               className="-mx-1 min-h-0 space-y-1 overflow-y-auto px-1"
             >
-              {listed.map((conversation) => (
-                <li key={conversation.id}>
-                  <button
-                    type="button"
-                    onClick={() => selectConversation(conversation)}
-                    aria-current={
-                      conversation.id === active.id ? "true" : undefined
-                    }
-                    className={cn(
-                      "w-full rounded-lg px-2 py-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                      conversation.id === active.id
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              {listed.map((conversation) => {
+                const current = conversation.id === active.id
+                const draft =
+                  !conversation.saved && conversation.messages.length === 0
+                return (
+                  <li key={conversation.id} className="group/item relative">
+                    <button
+                      type="button"
+                      onClick={() => selectConversation(conversation)}
+                      aria-current={current ? "true" : undefined}
+                      className={cn(
+                        "w-full rounded-lg py-2 pr-9 pl-2 text-left text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                        current
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block truncate">
+                        {conversation.title}
+                      </span>
+                      <span className="financial-value block text-xs text-muted-foreground">
+                        {formatDateTime(conversation.updatedAt)}
+                      </span>
+                    </button>
+                    {!draft && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Ações da conversa “${conversation.title}”`}
+                              className={cn(
+                                "absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground data-popup-open:opacity-100",
+                                // Em tela com mouse, aparece ao passar ou focar;
+                                // no toque fica sempre visível.
+                                !current &&
+                                  "pointer-fine:opacity-0 pointer-fine:group-hover/item:opacity-100 pointer-fine:group-focus-within/item:opacity-100",
+                              )}
+                            />
+                          }
+                        >
+                          <MoreVertical />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem
+                            onClick={() => setRenaming(conversation)}
+                          >
+                            <Pencil />
+                            Renomear
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={
+                              pending?.conversationId === conversation.id
+                            }
+                            onClick={() => setDeleting(conversation)}
+                          >
+                            <Trash2 />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
-                  >
-                    <span className="block truncate">{conversation.title}</span>
-                    <span className="financial-value block text-xs text-muted-foreground">
-                      {formatDateTime(conversation.updatedAt)}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </CardContent>
         </Card>
+
+        <RenameConversationDialog
+          conversation={renaming}
+          onClose={() => setRenaming(null)}
+          onRenamed={(id, title) =>
+            updateConversation(id, (conversation) => ({
+              ...conversation,
+              title,
+            }))
+          }
+        />
+
+        <DeleteConversationDialog
+          conversation={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={removeConversation}
+        />
 
         {/* Painel direito: conversa */}
         <Card className="h-[calc(100dvh-3.5rem-2rem)] min-h-[26rem] lg:h-auto lg:min-h-0">
