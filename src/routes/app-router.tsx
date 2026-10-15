@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter } from "react-router-dom"
 import { AppLayout } from "@/layouts/app-layout"
 import { AuthLayout } from "@/layouts/auth-layout"
 import { NotFoundPage } from "@/pages/not-found-page"
+import { TermsPage } from "@/pages/terms-page"
 import { LoginPage } from "@/pages/auth/login-page"
 import { RegisterPage } from "@/pages/auth/register-page"
 import { AssistantPage } from "@/pages/app/assistant-page"
@@ -45,6 +46,10 @@ export const router = createBrowserRouter([
       },
     ],
   },
+
+  // Fora dos dois grupos: quem se cadastra lê antes de ter conta, e quem já
+  // tem conta continua podendo consultar.
+  { path: paths.public.terms, element: <TermsPage /> },
 
   // A raiz leva ao dashboard; sem sessão o ProtectedRoute devolve ao login.
   { path: "/", element: <Navigate to={paths.app.dashboard} replace /> },

@@ -36,6 +36,7 @@ export type ReplyEndInfo = {
   outcome: OperationOutcome | null
   report: ReportPeriodRef | null
   kind: ReplyKind | null
+  flow: "registro" | "consulta" | null
 }
 
 export type ReplyHandlers = {
@@ -115,7 +116,7 @@ export function useChatSocket() {
     )
     socket.on(
       ChatEvent.end,
-      ({ id, pending, outcome, report, kind }: ReplyEnd) => {
+      ({ id, pending, outcome, report, kind, flow }: ReplyEnd) => {
         const reply = handlers.current.get(id)
         handlers.current.delete(id)
         reply?.onEnd({
@@ -123,6 +124,7 @@ export function useChatSocket() {
           outcome: outcome ?? null,
           report: report ?? null,
           kind: kind ?? null,
+          flow: flow ?? null,
         })
       },
     )

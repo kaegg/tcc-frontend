@@ -7,6 +7,7 @@ export const paths = {
     login: "/login",
     register: "/cadastro",
     forgotPassword: "/recuperar-senha",
+    terms: "/termos",
   },
   app: {
     dashboard: "/dashboard",

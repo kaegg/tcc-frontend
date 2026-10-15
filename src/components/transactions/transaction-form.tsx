@@ -25,8 +25,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/use-categories"
+import { useMetrics } from "@/hooks/use-metrics"
 import { describeApiError, fieldErrorsOf } from "@/lib/api/errors"
 import type { ApiTransaction, Category } from "@/lib/api/schemas"
+import type { MetricFlow } from "@/lib/metrics/context"
 import type { CreateTransactionInput } from "@/lib/api/transactions"
 import {
   centsToApi,
@@ -141,6 +143,8 @@ type TransactionFormProps<Saved> = {
   submitLabel: string
   cancelLabel?: string
   errorTitle: string
+  /** Tarefa medida a que os erros deste formulário pertencem (TCC-030). */
+  metricsFlow?: MetricFlow
 }
 
 export function TransactionForm<Saved = ApiTransaction>({
@@ -152,7 +156,9 @@ export function TransactionForm<Saved = ApiTransaction>({
   submitLabel,
   cancelLabel = "Cancelar",
   errorTitle,
+  metricsFlow = "formulario-registro",
 }: TransactionFormProps<Saved>) {
+  const metrics = useMetrics()
   const [type, setType] = useState(defaultValues.type)
 
   const {
@@ -211,6 +217,7 @@ export function TransactionForm<Saved = ApiTransaction>({
       }),
     onSuccess: onSaved,
     onError: (erro) => {
+      metrics.error(metricsFlow)
       // O backend devolve a falha por campo; ela é marcada no campo que a causou.
       for (const [campo, mensagens] of Object.entries(fieldErrorsOf(erro))) {
         if (ehCampo(campo) && mensagens[0]) {
@@ -226,7 +233,13 @@ export function TransactionForm<Saved = ApiTransaction>({
     (camposDaFalha.length === 0 || !camposDaFalha.every(ehCampo))
 
   return (
-    <form onSubmit={handleSubmit((values) => salvar.mutate(values))} noValidate>
+    <form
+      onSubmit={handleSubmit(
+        (values) => salvar.mutate(values),
+        () => metrics.error(metricsFlow),
+      )}
+      noValidate
+    >
       {/* Falha de comunicação vale para o formulário inteiro e vai num Alert
           no topo, nunca num FieldError: não é erro do campo que o usuário
           preencheu. */}

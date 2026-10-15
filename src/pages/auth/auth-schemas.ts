@@ -27,6 +27,9 @@ export const registerSchema = z
       .regex(/[a-zA-Z]/, "A senha deve conter pelo menos uma letra.")
       .regex(/[0-9]/, "A senha deve conter pelo menos um número."),
     passwordConfirmation: z.string().min(1, "Confirme sua senha."),
+    acceptTerms: z.literal(true, {
+      error: "Para criar a conta, aceite os Termos de Uso.",
+    }),
   })
   .refine((data) => data.password === data.passwordConfirmation, {
     message: "As senhas não coincidem.",

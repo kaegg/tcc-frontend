@@ -77,6 +77,8 @@ export type ReplyEnd = {
   outcome?: OperationOutcome | null
   report?: ReportPeriodRef | null
   kind?: ReplyKind | null
+  /** A que tarefa medida a resposta pertence (TCC-030). */
+  flow?: "registro" | "consulta" | null
 }
 export type ReplyError = { id: string } & ChatFailure
 

@@ -7,6 +7,7 @@ const CADASTRO = {
   name: "Kauan Eguchi",
   email: "kauan@exemplo.com",
   password: "SenhaValida123",
+  acceptTerms: true as const,
 }
 
 const USUARIO_CRIADO = {

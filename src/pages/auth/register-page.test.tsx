@@ -59,13 +59,18 @@ function renderizar(): void {
 }
 
 /** Preenche o formulário com dados que passam na validação do cliente. */
-async function preencher(): Promise<void> {
+async function preencher({ aceitar = true } = {}): Promise<void> {
   const user = userEvent.setup()
 
   await user.type(screen.getByLabelText("Nome"), "Kauan Eguchi")
   await user.type(screen.getByLabelText("E-mail"), "kauan@exemplo.com")
   await user.type(screen.getByLabelText("Senha"), "SenhaValida123")
   await user.type(screen.getByLabelText("Confirmar senha"), "SenhaValida123")
+  if (aceitar) {
+    await user.click(
+      screen.getByRole("checkbox", { name: /Li e aceito os Termos de Uso/ }),
+    )
+  }
   await user.click(screen.getByRole("button", { name: "Criar conta" }))
 }
 
@@ -109,6 +114,53 @@ describe("RegisterPage", () => {
     await waitFor(() => {
       expect(navegou).toHaveBeenCalledWith("/login", { replace: true })
     })
+  })
+
+  it("os termos começam desmarcados e são obrigatórios", async () => {
+    renderizar()
+
+    expect(
+      screen.getByRole("checkbox", { name: /Li e aceito os Termos de Uso/ }),
+    ).not.toBeChecked()
+
+    await preencher({ aceitar: false })
+
+    expect(
+      await screen.findByText("Para criar a conta, aceite os Termos de Uso."),
+    ).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("envia o aceite dos termos junto com o cadastro", async () => {
+    responde(
+      {
+        id: "0199a1b2-c3d4-7000-8000-000000000001",
+        name: "Kauan Eguchi",
+        email: "kauan@exemplo.com",
+        createdAt: "2026-09-10T12:00:00.000Z",
+      },
+      201,
+    )
+    renderizar()
+
+    await preencher()
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({
+      name: "Kauan Eguchi",
+      email: "kauan@exemplo.com",
+      password: "SenhaValida123",
+      acceptTerms: true,
+    })
+  })
+
+  it("os Termos de Uso abrem em outra aba, sem perder o que foi preenchido", () => {
+    renderizar()
+
+    const link = screen.getByRole("link", { name: "Termos de Uso" })
+    expect(link).toHaveAttribute("href", "/termos")
+    expect(link).toHaveAttribute("target", "_blank")
   })
 
   it("marca o e-mail duplicado no próprio campo", async () => {

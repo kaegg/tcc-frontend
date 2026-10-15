@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { CircleAlert, RefreshCw, Sparkles } from "lucide-react"
@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useMetrics } from "@/hooks/use-metrics"
 import { useTransaction } from "@/hooks/use-transactions"
 import { describeApiError, isApiError } from "@/lib/api/errors"
 import { invalidateFinancialData } from "@/lib/api/invalidate"
@@ -52,12 +53,30 @@ export function TransactionDialog({
 }) {
   const [dirty, setDirty] = useState(false)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+  const metrics = useMetrics()
+  const creating = target?.kind === "new"
 
-  const close = useCallback(() => {
-    setDirty(false)
-    setConfirmingDiscard(false)
-    onClose()
-  }, [onClose])
+  // Métrica do cadastro pelo formulário (TCC-030): do abrir ao salvar, ou ao
+  // fechar sem salvar.
+  useEffect(() => {
+    if (creating) metrics.start("formulario-registro")
+  }, [creating, metrics])
+
+  const close = useCallback(
+    (saved?: ApiTransaction) => {
+      if (creating) {
+        metrics.finish(
+          "formulario-registro",
+          saved ? "concluida" : "interrompida",
+          saved ? `registro-${saved.type}` : "registro",
+        )
+      }
+      setDirty(false)
+      setConfirmingDiscard(false)
+      onClose()
+    },
+    [creating, metrics, onClose],
+  )
 
   // Esc e clique fora fecham um modal sem querer com facilidade; numa página
   // isso não acontecia. Com alterações não salvas, pergunta antes.
@@ -128,7 +147,7 @@ export function TransactionDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={close}>
+            <AlertDialogAction variant="destructive" onClick={() => close()}>
               Descartar
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -139,7 +158,7 @@ export function TransactionDialog({
 }
 
 type EditorCallbacks = {
-  onDone: () => void
+  onDone: (saved?: ApiTransaction) => void
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
 }
@@ -238,7 +257,7 @@ function TransactionEditor({
         toast.success(item ? "Lançamento atualizado" : "Lançamento salvo", {
           description: transactionLabel(salvo),
         })
-        onDone()
+        onDone(salvo)
       }}
       onCancel={onCancel}
       onDirtyChange={onDirtyChange}
