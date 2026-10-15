@@ -13,7 +13,6 @@ import {
   Send,
   Sparkles,
   Square,
-  X,
 } from "lucide-react"
 
 import { ProposalCard } from "@/components/app/proposal-card"
@@ -206,11 +205,6 @@ export function AssistantPage() {
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState<PendingReply | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
-  // Lançamento sendo preenchido em cada conversa, como o servidor informou no
-  // fim da última resposta.
-  const [operations, setOperations] = useState<
-    Record<string, PendingSummary | null>
-  >({})
   const [cancelling, setCancelling] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -226,7 +220,6 @@ export function AssistantPage() {
   const active =
     conversations.find((item) => item.id === activeId) ?? conversations[0]
   const streaming = pending?.conversationId === active.id ? pending.text : null
-  const operation = operations[active.id] ?? null
   const activeLoad = loading[active.id] ?? null
 
   useEffect(() => {
@@ -258,7 +251,6 @@ export function AssistantPage() {
         staleTime: 0,
       })
       updateConversation(id, () => fromDetail(detail))
-      setOperations((current) => ({ ...current, [id]: detail.pending }))
       setLoading((current) => {
         const next = { ...current }
         delete next[id]
@@ -421,7 +413,6 @@ export function AssistantPage() {
           ],
         }
       })
-      setOperations((current) => ({ ...current, [conversationId]: summary }))
       if (reply) updateConversation(conversationId, markSaved)
       if (outcome === "registrado") void invalidateFinancialData(queryClient)
     }
@@ -518,7 +509,6 @@ export function AssistantPage() {
     reply: string,
     kind: ReplyKind,
   ) {
-    setOperations((current) => ({ ...current, [conversationId]: null }))
     updateConversation(conversationId, (conversation) => ({
       ...conversation,
       messages: settleProposals(conversation.messages, status),
@@ -544,7 +534,6 @@ export function AssistantPage() {
         "interrompida",
         registrationTask(proposalType.current),
       )
-      setOperations((current) => ({ ...current, [conversationId]: null }))
       updateConversation(conversationId, (conversation) => ({
         ...conversation,
         messages: settleProposals(conversation.messages, "expirada"),
@@ -635,10 +624,6 @@ export function AssistantPage() {
           ? { ...message, proposal: updated, proposalEdited: true }
           : message,
       ),
-    }))
-    setOperations((current) => ({
-      ...current,
-      [conversationId]: result.pending,
     }))
     return updated
   }
@@ -756,7 +741,8 @@ export function AssistantPage() {
                       <p className="whitespace-pre-wrap">
                         {streaming === "" ? (
                           <span className="text-muted-foreground">
-                            Interpretando sua mensagem…
+                            Interpretando sua mensagem
+                            <ThinkingDots />
                           </span>
                         ) : (
                           streaming
@@ -800,14 +786,6 @@ export function AssistantPage() {
                   )}
                 </AlertDescription>
               </Alert>
-            )}
-
-            {operation && (
-              <OperationStatus
-                operation={operation}
-                disabled={pending !== null || cancelling || confirming !== null}
-                onCancel={() => void cancelOperation()}
-              />
             )}
 
             <form
@@ -878,6 +856,27 @@ export function AssistantPage() {
   )
 }
 
+/**
+ * Os pontos piscam só na tela; o leitor de tela lê a frase uma vez, com
+ * reticências fixas, em vez de um texto que muda a cada ciclo.
+ */
+function ThinkingDots() {
+  return (
+    <>
+      <span className="sr-only">…</span>
+      <span aria-hidden="true">
+        .
+        <span className="animate-ellipsis-second motion-reduce:animate-none">
+          .
+        </span>
+        <span className="animate-ellipsis-third motion-reduce:animate-none">
+          .
+        </span>
+      </span>
+    </>
+  )
+}
+
 const markSaved = (conversation: Conversation): Conversation => ({
   ...conversation,
   saved: true,
@@ -915,44 +914,6 @@ function HistoryStatus({
         </Button>
       </AlertDescription>
     </Alert>
-  )
-}
-
-/**
- * O usuário vê que há um lançamento esperando resposta e pode desistir dele
- * sem precisar saber que "cancelar" também funciona por texto.
- */
-function OperationStatus({
-  operation,
-  disabled,
-  onCancel,
-}: {
-  operation: PendingSummary
-  disabled: boolean
-  onCancel: () => void
-}) {
-  const detail = operation.ready
-    ? "dados completos, confira antes de registrar"
-    : `falta ${operation.missing.join(" e ")}`
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ai/25 bg-ai/5 px-3 py-2">
-      <p role="status" className="text-xs">
-        <span className="font-medium text-ai-accent">
-          Lançamento em andamento
-        </span>
-        <span className="text-muted-foreground"> · {detail}</span>
-      </p>
-      <Button
-        variant="ghost"
-        className="h-7 text-xs"
-        disabled={disabled}
-        onClick={onCancel}
-      >
-        <X />
-        Cancelar lançamento
-      </Button>
-    </div>
   )
 }
 

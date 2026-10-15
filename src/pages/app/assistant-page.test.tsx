@@ -150,9 +150,12 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
 
     const log = screen.getByRole("log", { name: "Mensagens da conversa" })
     expect(within(log).getByText("oi")).toBeInTheDocument()
-    expect(
-      within(log).getByText("Interpretando sua mensagem…"),
-    ).toBeInTheDocument()
+    // Os pontos animados ficam fora do leitor de tela, que lê reticências fixas.
+    const indicador = within(log).getByText(/^Interpretando sua mensagem/)
+    expect(indicador).toHaveTextContent(/^Interpretando sua mensagem….{3}$/)
+    expect(indicador.querySelector('[aria-hidden="true"]')).toHaveTextContent(
+      "...",
+    )
 
     const [{ id }] = enviadas()
     act(() => fake.fire("reply:chunk", { id, text: "Olá" }))
@@ -163,7 +166,7 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
 
     expect(within(log).getByText("Olá, tudo bem?")).toBeInTheDocument()
     expect(
-      within(log).queryByText("Interpretando sua mensagem…"),
+      within(log).queryByText(/^Interpretando sua mensagem/),
     ).not.toBeInTheDocument()
   })
 
@@ -233,7 +236,7 @@ describe("AssistantPage — gateway do chat (TCC-022)", () => {
       ),
     ).toBeInTheDocument()
     expect(
-      screen.queryByText("Interpretando sua mensagem…"),
+      screen.queryByText(/^Interpretando sua mensagem/),
     ).not.toBeInTheDocument()
   })
 
@@ -306,61 +309,25 @@ describe("AssistantPage — lançamento em andamento (TCC-025)", () => {
     refreshSession.mockReset()
   })
 
-  async function responderComPendencia(pending: unknown) {
+  // O estado e o botão de cancelar ficam no cartão da proposta.
+  it("não mostra aviso separado do lançamento em andamento", async () => {
     await abrir()
-    const user = await escrever("gastei no mercado")
+    await escrever("gastei no mercado")
     const [{ id }] = enviadas()
     act(() => fake.fire("reply:chunk", { id, text: "Qual foi o valor?" }))
-    act(() => fake.fire("reply:end", { id, pending }))
-    return user
-  }
+    act(() =>
+      fake.fire("reply:end", {
+        id,
+        pending: { missing: ["valor"], ready: false },
+      }),
+    )
 
-  it("mostra o que falta no lançamento em andamento", async () => {
-    await responderComPendencia({ missing: ["valor"], ready: false })
-
-    expect(screen.getByText("Lançamento em andamento")).toBeInTheDocument()
-    expect(screen.getByText(/falta valor/)).toBeInTheDocument()
-  })
-
-  it("avisa quando os dados estão completos", async () => {
-    await responderComPendencia({ missing: [], ready: true })
-
-    expect(
-      screen.getByText(/dados completos, confira antes de registrar/),
-    ).toBeInTheDocument()
-  })
-
-  it("não mostra o aviso sem lançamento em andamento", async () => {
-    await responderComPendencia(null)
-
+    expect(screen.getByText("Qual foi o valor?")).toBeInTheDocument()
     expect(
       screen.queryByText("Lançamento em andamento"),
     ).not.toBeInTheDocument()
-  })
-
-  it("cancela pelo botão e mostra a confirmação do assistente", async () => {
-    const user = await responderComPendencia({
-      missing: ["valor"],
-      ready: false,
-    })
-    fake.acks.push({
-      ok: true,
-      reply:
-        "Tudo bem, cancelei o lançamento em andamento. Nada foi registrado.",
-    })
-
-    await user.click(
-      screen.getByRole("button", { name: "Cancelar lançamento" }),
-    )
-
-    const pedido = fake.sent.at(-1)
-    expect(pedido?.event).toBe("operation:cancel")
-    expect(pedido?.payload).toEqual({
-      conversationId: enviadas()[0].conversationId,
-    })
-    expect(await screen.findByText(/Nada foi registrado/)).toBeInTheDocument()
     expect(
-      screen.queryByText("Lançamento em andamento"),
+      screen.queryByRole("button", { name: "Cancelar lançamento" }),
     ).not.toBeInTheDocument()
   })
 })
@@ -899,7 +866,7 @@ describe("AssistantPage — histórico gravado", () => {
       await screen.findByText("Proposta de lançamento sugerida pela IA"),
     ).toBeInTheDocument()
     expect(screen.getByText("Aguardando confirmação")).toBeInTheDocument()
-    expect(screen.getByText(/Lançamento em andamento/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeEnabled()
   })
 
   it("começa uma conversa nova quando a do endereço não existe mais", async () => {

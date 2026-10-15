@@ -154,3 +154,27 @@
   font-variant-numeric: proportional-nums;
   letter-spacing: -0.02em;
 }
+
+/* Reticências de "Interpretando sua mensagem": ".", "..", "..." em ciclo. */
+@theme {
+  --animate-ellipsis-second: ellipsis-second 1.35s step-end infinite;
+  --animate-ellipsis-third: ellipsis-third 1.35s step-end infinite;
+
+  @keyframes ellipsis-second {
+    0% {
+      opacity: 0;
+    }
+    33.333% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes ellipsis-third {
+    0% {
+      opacity: 0;
+    }
+    66.667% {
+      opacity: 1;
+    }
+  }
+}
