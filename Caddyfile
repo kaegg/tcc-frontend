@@ -15,6 +15,21 @@
 	encode zstd gzip
 
 	handle /api/* {
+		# A documentação da API (Swagger) só pelo localhost do servidor, isto é, pelo túnel SSH.
+		# Pelo domínio público a requisição passa pela Cloudflare, que sempre acrescenta
+		# `Cf-Connecting-Ip` (o visitante não consegue removê-lo); o `Host` sozinho não basta,
+		# porque o nginx da frente pode reescrevê-lo. 404, e não 403, para não confirmar a rota.
+		@docsPelaCloudflare {
+			path /api/docs /api/docs/* /api/docs-json /api/docs-yaml
+			header Cf-Connecting-Ip *
+		}
+		@docsForaDoLocalhost {
+			path /api/docs /api/docs/* /api/docs-json /api/docs-yaml
+			not host localhost 127.0.0.1
+		}
+		respond @docsPelaCloudflare 404
+		respond @docsForaDoLocalhost 404
+
 		reverse_proxy backend:3000
 	}
 
