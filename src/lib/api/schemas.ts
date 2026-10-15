@@ -168,6 +168,49 @@ export const authSchema = z.object({
   user: userSchema,
 })
 
+/** Lançamento que aguarda confirmação no chat; espelha `Proposal` do protocolo. */
+const proposalSchema = z.object({
+  id: z.string(),
+  type: transactionTypeSchema,
+  amount: z.string(),
+  categoryId: z.string(),
+  categoryName: z.string(),
+  date: z.string(),
+  description: z.string().nullable(),
+  dateDefaulted: z.boolean(),
+})
+
+export const conversationSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  updatedAt: z.string(),
+})
+
+export const conversationListSchema = z.object({
+  data: z.array(conversationSummarySchema),
+})
+
+export const conversationDetailSchema = conversationSummarySchema.extend({
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      role: z.enum(["user", "assistant"]),
+      content: z.string(),
+      kind: z
+        .enum(["pergunta", "confirmacao", "sucesso", "erro", "informacao"])
+        .nullable(),
+      report: z.object({ from: z.string(), to: z.string() }).nullable(),
+    }),
+  ),
+  pending: z
+    .object({
+      missing: z.array(z.string()),
+      ready: z.boolean(),
+      proposal: proposalSchema.nullable(),
+    })
+    .nullable(),
+})
+
 export type TransactionType = z.infer<typeof transactionTypeSchema>
 export type ApiTransaction = z.infer<typeof transactionSchema>
 export type TransactionList = z.infer<typeof transactionListSchema>
@@ -182,6 +225,8 @@ export type CategoryList = z.infer<typeof categoryListSchema>
 export type Health = z.infer<typeof healthSchema>
 export type ApiErrorBody = z.infer<typeof apiErrorBodySchema>
 export type User = z.infer<typeof userSchema>
+export type ConversationSummary = z.infer<typeof conversationSummarySchema>
+export type ConversationDetail = z.infer<typeof conversationDetailSchema>
 
 /** Mensagens de erro agrupadas pelo campo que as produziu. */
 export type FieldErrors = NonNullable<ApiErrorBody["fieldErrors"]>

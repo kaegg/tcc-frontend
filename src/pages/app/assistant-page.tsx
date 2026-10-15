@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from "react"
-import { Link } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
+import { Link, useSearchParams } from "react-router-dom"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ChartColumn,
   CircleCheck,
   Lightbulb,
   MessageCircleQuestion,
   CircleAlert,
+  Loader2,
   MessageSquarePlus,
   RefreshCw,
   Send,
@@ -38,9 +39,12 @@ import {
   type ReplyEndInfo,
 } from "@/hooks/use-chat-socket"
 import { useMetrics } from "@/hooks/use-metrics"
-import { ApiError } from "@/lib/api/errors"
+import { fetchConversation, fetchConversations } from "@/lib/api/conversations"
+import { ApiError, isApiError } from "@/lib/api/errors"
 import { invalidateFinancialData } from "@/lib/api/invalidate"
 import type { MetricTask } from "@/lib/api/metrics"
+import { queryKeys } from "@/lib/api/query-keys"
+import type { ConversationDetail, ConversationSummary } from "@/lib/api/schemas"
 import type { CreateTransactionInput } from "@/lib/api/transactions"
 import {
   MAX_MESSAGE_CHARS,
@@ -55,6 +59,7 @@ import {
 import { EXAMPLE_GROUPS, STARTER_SUGGESTIONS } from "@/lib/chat/examples"
 import { formatDateTime } from "@/lib/format"
 import type { MetricFlow } from "@/lib/metrics/context"
+import { randomUuid } from "@/lib/random-id"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, Conversation, ProposalStatus } from "@/lib/types"
 import { paths } from "@/routes/paths"
@@ -99,14 +104,63 @@ function newClientId(prefix: string) {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
 
+const UNTITLED = "Nova conversa"
+const MAX_TITLE_CHARS = 120
+const CONVERSATION_PARAM = "conversa"
+
+/** O id vira a chave da conversa no banco, então é um UUID. */
 function emptyConversation(): Conversation {
   return {
-    id: newClientId("c"),
-    title: "Nova conversa",
+    id: randomUuid(),
+    title: UNTITLED,
     updatedAt: new Date().toISOString(),
     messages: [],
   }
 }
+
+function savedConversation({
+  id,
+  title,
+  updatedAt,
+}: ConversationSummary): Conversation {
+  return { id, title, updatedAt, messages: [], saved: true }
+}
+
+/**
+ * O cartão só volta se o lançamento ainda aguarda confirmação no servidor; ele
+ * pertence à última resposta que pediu confirmação. Cartões já resolvidos não
+ * são gravados: a resposta em texto conta o que foi proposto.
+ */
+function fromDetail(detail: ConversationDetail): Conversation {
+  const proposal = detail.pending?.proposal ?? null
+  const messages: ChatMessage[] = detail.messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    kind: message.kind,
+    ...(message.report ? { report: message.report } : {}),
+  }))
+  const carrier = proposal
+    ? messages.findLastIndex((message) => message.kind === "confirmacao")
+    : -1
+  if (proposal && carrier >= 0) {
+    messages[carrier] = {
+      ...messages[carrier],
+      proposal,
+      proposalStatus: "pendente",
+    }
+  }
+  return {
+    id: detail.id,
+    title: detail.title,
+    updatedAt: detail.updatedAt,
+    messages,
+    saved: true,
+  }
+}
+
+const newestFirst = (a: Conversation, b: Conversation) =>
+  b.updatedAt.localeCompare(a.updatedAt)
 
 /** Instante da mensagem, no mesmo relógio que a coleta usa para a duração. */
 const now = () => performance.now()
@@ -129,10 +183,26 @@ export function AssistantPage() {
   const metrics = useMetrics()
   // Tipo da última proposta, para nomear a tarefa quando ela é registrada.
   const proposalType = useRef<string | null>(null)
-  const [conversations, setConversations] = useState(() => [
-    emptyConversation(),
+  const [searchParams, setSearchParams] = useSearchParams()
+  const linkedId = searchParams.get(CONVERSATION_PARAM)
+  // Recarregar a página reabre, pelo endereço, a conversa que estava aberta.
+  const [conversations, setConversations] = useState<Conversation[]>(() => [
+    linkedId
+      ? savedConversation({
+          id: linkedId,
+          title: UNTITLED,
+          updatedAt: new Date().toISOString(),
+        })
+      : emptyConversation(),
   ])
   const [activeId, setActiveId] = useState(conversations[0].id)
+  const [loading, setLoading] = useState<Record<string, "carregando" | "erro">>(
+    () => (linkedId ? { [linkedId]: "carregando" } : {}),
+  )
+  const saved = useQuery({
+    queryKey: queryKeys.conversations,
+    queryFn: ({ signal }) => fetchConversations(signal),
+  })
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState<PendingReply | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -146,14 +216,98 @@ export function AssistantPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
+  const known = new Set(conversations.map((item) => item.id))
+  const listed = [
+    ...conversations,
+    ...(saved.data ?? [])
+      .filter((item) => !known.has(item.id))
+      .map(savedConversation),
+  ].sort(newestFirst)
   const active =
     conversations.find((item) => item.id === activeId) ?? conversations[0]
   const streaming = pending?.conversationId === active.id ? pending.text : null
   const operation = operations[active.id] ?? null
+  const activeLoad = loading[active.id] ?? null
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [active.messages.length, streaming])
+  }, [active.id, active.messages.length, streaming])
+
+  function linkConversation(id: string | null) {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (id) next.set(CONVERSATION_PARAM, id)
+        else next.delete(CONVERSATION_PARAM)
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  function loadConversation(id: string) {
+    setLoading((current) => ({ ...current, [id]: "carregando" }))
+    void fetchHistory(id)
+  }
+
+  async function fetchHistory(id: string) {
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: queryKeys.conversation(id),
+        queryFn: ({ signal }) => fetchConversation(id, signal),
+        staleTime: 0,
+      })
+      updateConversation(id, () => fromDetail(detail))
+      setOperations((current) => ({ ...current, [id]: detail.pending }))
+      setLoading((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+    } catch (error) {
+      if (isApiError(error) && error.statusCode === 404) {
+        discardConversation(id)
+        return
+      }
+      setLoading((current) => ({ ...current, [id]: "erro" }))
+    }
+  }
+
+  /** Conversa que o servidor não tem (resposta falhou antes de gravar). */
+  function discardConversation(id: string) {
+    const fresh = emptyConversation()
+    setConversations((items) => [
+      fresh,
+      ...items.filter((item) => item.id !== id),
+    ])
+    setActiveId((current) => (current === id ? fresh.id : current))
+    setLoading((current) => {
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (next.get(CONVERSATION_PARAM) === id) {
+          next.delete(CONVERSATION_PARAM)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  function selectConversation(conversation: Conversation) {
+    const { id } = conversation
+    setActiveId(id)
+    setFailure(null)
+    const draft = !conversation.saved && conversation.messages.length === 0
+    linkConversation(draft ? null : id)
+    if (known.has(id)) return
+    setConversations((items) => [...items, conversation])
+    loadConversation(id)
+  }
 
   // A resposta chega depois e pode pertencer a uma conversa que já não está
   // aberta; por isso as atualizações são pelo id, não pela conversa ativa.
@@ -171,7 +325,7 @@ export function AssistantPage() {
       ...conversation,
       title:
         conversation.messages.length === 0 && message.role === "user"
-          ? message.content.slice(0, 40)
+          ? message.content.slice(0, MAX_TITLE_CHARS)
           : conversation.title,
       updatedAt: new Date().toISOString(),
       messages: [...conversation.messages, message],
@@ -179,17 +333,24 @@ export function AssistantPage() {
   }
 
   function newConversation() {
+    setFailure(null)
+    linkConversation(null)
+    const draft = conversations.find(
+      (item) => !item.saved && item.messages.length === 0,
+    )
+    if (draft) {
+      setActiveId(draft.id)
+      return
+    }
     const conversation = emptyConversation()
     setConversations((items) => [conversation, ...items])
     setActiveId(conversation.id)
-    setFailure(null)
   }
 
   async function send(text: string, retryIn?: string) {
     const content = text.trim()
-    if (!content || pending !== null) return
-
     const conversationId = retryIn ?? active.id
+    if (!content || pending !== null || loading[conversationId]) return
     const retry = { conversationId, content }
 
     if (chat.status !== "conectado") {
@@ -200,6 +361,7 @@ export function AssistantPage() {
 
     const sentAt = now()
     setFailure(null)
+    if (conversationId === active.id) linkConversation(conversationId)
     if (!retryIn) {
       setDraft("")
       appendMessage(conversationId, {
@@ -260,6 +422,7 @@ export function AssistantPage() {
         }
       })
       setOperations((current) => ({ ...current, [conversationId]: summary }))
+      if (reply) updateConversation(conversationId, markSaved)
       if (outcome === "registrado") void invalidateFinancialData(queryClient)
     }
 
@@ -480,9 +643,17 @@ export function AssistantPage() {
     return updated
   }
 
+  useEffect(() => {
+    // Só a conversa do endereço, na abertura; as outras carregam ao clicar.
+    if (linkedId) void fetchHistory(linkedId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    // Em tela larga a página ocupa a altura da janela, e só as mensagens
+    // rolam; em tela estreita a lista vem antes e o chat ocupa uma tela.
+    <div className="flex flex-col gap-6 lg:h-[calc(100dvh-3.5rem-3rem)]">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             Assistente IA
@@ -499,19 +670,25 @@ export function AssistantPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[260px_1fr] lg:grid-rows-[minmax(0,1fr)]">
         {/* Painel esquerdo: histórico de conversas */}
-        <Card className="h-fit">
-          <CardContent className="px-2">
-            <h2 className="px-2 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        <Card className="max-h-56 lg:max-h-full lg:self-start">
+          <CardContent className="flex min-h-0 flex-col px-2">
+            <h2
+              id="recent-conversations"
+              className="px-2 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            >
               Conversas recentes
             </h2>
-            <ul className="space-y-1">
-              {conversations.map((conversation) => (
+            <ul
+              aria-labelledby="recent-conversations"
+              className="-mx-1 min-h-0 space-y-1 overflow-y-auto px-1"
+            >
+              {listed.map((conversation) => (
                 <li key={conversation.id}>
                   <button
                     type="button"
-                    onClick={() => setActiveId(conversation.id)}
+                    onClick={() => selectConversation(conversation)}
                     aria-current={
                       conversation.id === active.id ? "true" : undefined
                     }
@@ -534,12 +711,17 @@ export function AssistantPage() {
         </Card>
 
         {/* Painel direito: conversa */}
-        <Card className="flex h-[32rem] flex-col">
+        <Card className="h-[calc(100dvh-3.5rem-2rem)] min-h-[26rem] lg:h-auto lg:min-h-0">
           <ConnectionStatus status={chat.status} onReconnect={chat.reconnect} />
           <Separator />
 
-          <ScrollArea ref={scrollRef} className="flex-1 px-4">
-            {active.messages.length === 0 && streaming === null ? (
+          <ScrollArea viewportRef={scrollRef} className="min-h-0 flex-1 px-4">
+            {activeLoad ? (
+              <HistoryStatus
+                state={activeLoad}
+                onRetry={() => loadConversation(active.id)}
+              />
+            ) : active.messages.length === 0 && streaming === null ? (
               <EmptyConversation onPick={(text) => void send(text)} />
             ) : (
               // `log` anuncia ao leitor de tela cada mensagem concluída. O
@@ -593,7 +775,7 @@ export function AssistantPage() {
 
           <Separator />
 
-          <div className="space-y-3 p-4">
+          <div className="shrink-0 space-y-3 px-4">
             {failure && (
               <Alert variant="destructive">
                 <CircleAlert />
@@ -667,7 +849,11 @@ export function AssistantPage() {
                   type="submit"
                   size="icon-lg"
                   aria-label="Enviar mensagem"
-                  disabled={draft.trim() === "" || chat.status !== "conectado"}
+                  disabled={
+                    draft.trim() === "" ||
+                    chat.status !== "conectado" ||
+                    activeLoad !== null
+                  }
                 >
                   <Send />
                 </Button>
@@ -689,6 +875,46 @@ export function AssistantPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+const markSaved = (conversation: Conversation): Conversation => ({
+  ...conversation,
+  saved: true,
+})
+
+function HistoryStatus({
+  state,
+  onRetry,
+}: {
+  state: "carregando" | "erro"
+  onRetry: () => void
+}) {
+  if (state === "carregando") {
+    return (
+      <p
+        role="status"
+        className="flex h-full items-center justify-center gap-2 py-10 text-sm text-muted-foreground"
+      >
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        Carregando a conversa…
+      </p>
+    )
+  }
+  return (
+    <Alert variant="destructive" className="my-4">
+      <CircleAlert />
+      <AlertTitle>Não foi possível abrir esta conversa</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p>
+          Verifique sua conexão e tente de novo, ou comece uma nova conversa.
+        </p>
+        <Button variant="outline" className="h-8" onClick={onRetry}>
+          <RefreshCw />
+          Tentar novamente
+        </Button>
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -890,7 +1116,7 @@ function MessageBubble({
   }
 
   return (
-    <div className="max-w-[85%]">
+    <div className={cn(message.proposal ? "sm:max-w-[85%]" : "max-w-[85%]")}>
       <AssistantLabel kind={message.proposal ? null : message.kind} />
       <div className="rounded-xl rounded-bl-sm bg-muted/60 px-3 py-2 text-sm">
         <p className="whitespace-pre-wrap">{message.content}</p>

@@ -67,6 +67,8 @@ export type Conversation = {
   title: string
   updatedAt: string
   messages: ChatMessage[]
+  /** Gravada no servidor; as mensagens só chegam quando ela é aberta. */
+  saved?: boolean
 }
 
 export type User = {

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { ApiError } from "@/lib/api/errors"
 import { AssistantPage } from "@/pages/app/assistant-page"
 
 type Handler = (...args: unknown[]) => void
@@ -68,6 +69,12 @@ class FakeSocket {
 
 const socket = vi.hoisted(() => ({ current: null as unknown }))
 const refreshSession = vi.hoisted(() => vi.fn())
+const conversationsApi = vi.hoisted(() => ({
+  fetchConversations: vi.fn(),
+  fetchConversation: vi.fn(),
+}))
+
+vi.mock("@/lib/api/conversations", () => conversationsApi)
 
 vi.mock("socket.io-client", () => ({
   io: () => socket.current,
@@ -92,13 +99,13 @@ function enviadas() {
     )
 }
 
-function renderizar() {
+function renderizar(endereco = "/assistente") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[endereco]}>
         <AssistantPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -119,6 +126,11 @@ async function escrever(texto: string) {
   )
   return user
 }
+
+beforeEach(() => {
+  conversationsApi.fetchConversations.mockReset().mockResolvedValue([])
+  conversationsApi.fetchConversation.mockReset()
+})
 
 describe("AssistantPage — gateway do chat (TCC-022)", () => {
   beforeEach(() => {
@@ -783,5 +795,165 @@ describe("AssistantPage — respostas padronizadas e ajuda (TCC-028)", () => {
     expect(campo).toHaveValue("recebi 3.000 de salário dia 5")
     await waitFor(() => expect(campo).toHaveFocus())
     expect(enviadas()).toHaveLength(0)
+  })
+})
+
+describe("AssistantPage — histórico gravado", () => {
+  const CONVERSA = "0199a1b2-c3d4-7000-8000-0000000000d1"
+
+  const conversa = (extra: object = {}) => ({
+    id: CONVERSA,
+    title: "Gastei 45 reais no mercado ontem",
+    updatedAt: "2026-10-14T12:00:00.000Z",
+    messages: [
+      {
+        id: "a",
+        role: "user",
+        content: "Gastei 45 reais no mercado ontem",
+        kind: null,
+        report: null,
+      },
+      {
+        id: "b",
+        role: "assistant",
+        content: "Entendi: despesa de R$ 45,00. Confira os dados no cartão.",
+        kind: "confirmacao",
+        report: null,
+      },
+    ],
+    pending: null,
+    ...extra,
+  })
+
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn()
+    fake = new FakeSocket()
+    socket.current = fake
+    refreshSession.mockReset()
+  })
+
+  it("lista as conversas gravadas e abre o histórico ao escolher uma", async () => {
+    conversationsApi.fetchConversations.mockResolvedValue([
+      {
+        id: CONVERSA,
+        title: "Gastei 45 reais no mercado ontem",
+        updatedAt: "2026-10-14T12:00:00.000Z",
+      },
+    ])
+    conversationsApi.fetchConversation.mockResolvedValue(conversa())
+    await abrir()
+    const user = userEvent.setup()
+
+    const recentes = screen.getByRole("list", { name: "Conversas recentes" })
+    await user.click(
+      await within(recentes).findByRole("button", {
+        name: /Gastei 45 reais no mercado ontem/,
+      }),
+    )
+
+    const log = await screen.findByRole("log", {
+      name: "Mensagens da conversa",
+    })
+    expect(
+      within(log).getByText("Gastei 45 reais no mercado ontem"),
+    ).toBeInTheDocument()
+    expect(within(log).getByText(/Confira os dados no cartão/)).toBeVisible()
+    expect(conversationsApi.fetchConversation).toHaveBeenCalledWith(
+      CONVERSA,
+      expect.anything(),
+    )
+    // Sem lançamento pendente no servidor, o cartão não volta.
+    expect(
+      screen.queryByText("Proposta de lançamento sugerida pela IA"),
+    ).not.toBeInTheDocument()
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Mensagem para o assistente" }),
+      "e mais 10{Enter}",
+    )
+    expect(enviadas()[0].conversationId).toBe(CONVERSA)
+  })
+
+  it("reabre pelo endereço a conversa, com o lançamento que ainda aguarda confirmação", async () => {
+    conversationsApi.fetchConversation.mockResolvedValue(
+      conversa({
+        pending: {
+          missing: [],
+          ready: true,
+          proposal: {
+            id: "p1",
+            type: "despesa",
+            amount: "45.00",
+            categoryId: "0199a1b2-c3d4-7000-8000-00000000c001",
+            categoryName: "Alimentação",
+            date: "2026-10-13",
+            description: "Mercado",
+            dateDefaulted: false,
+          },
+        },
+      }),
+    )
+    renderizar(`/assistente?conversa=${CONVERSA}`)
+
+    expect(
+      await screen.findByText("Proposta de lançamento sugerida pela IA"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Aguardando confirmação")).toBeInTheDocument()
+    expect(screen.getByText(/Lançamento em andamento/)).toBeInTheDocument()
+  })
+
+  it("começa uma conversa nova quando a do endereço não existe mais", async () => {
+    conversationsApi.fetchConversation.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        statusCode: 404,
+        message: "Conversa não encontrada.",
+      }),
+    )
+    renderizar(`/assistente?conversa=${CONVERSA}`)
+
+    expect(
+      await screen.findByText("Nenhuma conversa iniciada"),
+    ).toBeInTheDocument()
+  })
+
+  it("avisa a falha ao abrir e deixa tentar de novo", async () => {
+    conversationsApi.fetchConversation
+      .mockRejectedValueOnce(
+        new ApiError({ kind: "rede", message: "Sem conexão." }),
+      )
+      .mockResolvedValueOnce(conversa())
+    renderizar(`/assistente?conversa=${CONVERSA}`)
+    const user = userEvent.setup()
+
+    await screen.findByText("Não foi possível abrir esta conversa")
+    expect(
+      screen.getByRole("button", { name: "Enviar mensagem" }),
+    ).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "Tentar novamente" }))
+
+    expect(
+      await screen.findByText(/Confira os dados no cartão/),
+    ).toBeInTheDocument()
+  })
+
+  it("usa UUID como id de conversa nova e não acumula conversas vazias", async () => {
+    await abrir()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Nova conversa" }))
+    await user.click(screen.getByRole("button", { name: "Nova conversa" }))
+    expect(
+      within(
+        screen.getByRole("list", { name: "Conversas recentes" }),
+      ).getAllByRole("listitem"),
+    ).toHaveLength(1)
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Mensagem para o assistente" }),
+      "oi{Enter}",
+    )
+    expect(enviadas()[0].conversationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
   })
 })

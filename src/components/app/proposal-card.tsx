@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Check, Clock, Loader2, Pencil, RefreshCw, X } from "lucide-react"
 
 import { TransactionTypeBadge } from "@/components/app/transaction-type-badge"
@@ -36,13 +36,24 @@ export function ProposalCard({
   onEdit: (input: CreateTransactionInput) => Promise<Proposal>
 }) {
   const [editing, setEditing] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
   const { proposal, proposalStatus = "pendente", proposalEdited } = message
+
+  // O formulário é mais alto que o cartão e abre no fim da conversa: sem
+  // isto, os campos de baixo e os botões ficam fora da área visível.
+  useEffect(() => {
+    if (editing) cardRef.current?.scrollIntoView?.({ block: "nearest" })
+  }, [editing])
+
   if (!proposal) return null
 
   const pending = proposalStatus === "pendente"
 
   return (
-    <div className="mt-3 rounded-xl border border-ai/25 bg-background/60 p-3">
+    <div
+      ref={cardRef}
+      className="mt-3 scroll-mb-4 rounded-xl border border-ai/25 bg-background/60 p-3"
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">
           {editing && pending

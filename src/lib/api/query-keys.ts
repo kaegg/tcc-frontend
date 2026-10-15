@@ -17,6 +17,8 @@ export const queryKeys = {
   reportOverview: (from: string, to: string) =>
     ["reports", "overview", { from, to }] as const,
   monthlySummary: (month: string) => ["reports", "monthly", { month }] as const,
+  conversations: ["conversations"] as const,
+  conversation: (id: string) => ["conversations", id] as const,
   categories: (type?: TransactionType) =>
     type ? (["categories", { type }] as const) : (["categories"] as const),
 }

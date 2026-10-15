@@ -3,25 +3,17 @@
  * servidor recebe só estes códigos e não tem como ligá-los a uma conta.
  */
 
-/** UUID v4 também fora de contexto seguro, onde `randomUUID` não existe. */
-function randomId(): string {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID()
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
+import { randomUuid } from "@/lib/random-id"
 
 function stored(storage: Storage, key: string): string {
   try {
     const current = storage.getItem(key)
     if (current) return current
-    const created = randomId()
+    const created = randomUuid()
     storage.setItem(key, created)
     return created
   } catch {
-    return randomId()
+    return randomUuid()
   }
 }
 
